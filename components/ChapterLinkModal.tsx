@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ChevronLeft, ChevronRight, FileText, AlignLeft } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, FileText, AlignLeft, Trash2 } from 'lucide-react';
 import { Chapter } from '../types';
 
 interface ChapterLinkModalProps {
@@ -27,6 +27,7 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
     const [localLinks, setLocalLinks] = useState<ChapterLink[]>(selectedLinks);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+    const [selectedForDeletion, setSelectedForDeletion] = useState<Set<string>>(new Set());
 
     if (!isOpen) return null;
 
@@ -107,6 +108,35 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
         setLocalLinks(updatedLinks);
     };
 
+    // 切换复选框选中状态
+    const toggleSelection = (chapterId: string) => {
+        const newSelection = new Set(selectedForDeletion);
+        if (newSelection.has(chapterId)) {
+            newSelection.delete(chapterId);
+        } else {
+            newSelection.add(chapterId);
+        }
+        setSelectedForDeletion(newSelection);
+    };
+
+    // 全选/取消全选
+    const toggleSelectAll = () => {
+        if (selectedForDeletion.size === localLinks.length) {
+            setSelectedForDeletion(new Set());
+        } else {
+            setSelectedForDeletion(new Set(localLinks.map(link => link.chapterId)));
+        }
+    };
+
+    // 删除选中的关联
+    const deleteSelected = () => {
+        if (selectedForDeletion.size === 0) return;
+        if (window.confirm(`确定要删除选中的 ${selectedForDeletion.size} 个关联吗？`)) {
+            setLocalLinks(localLinks.filter(link => !selectedForDeletion.has(link.chapterId)));
+            setSelectedForDeletion(new Set());
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
@@ -162,22 +192,41 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
 
                     {/* Batch Operations */}
                     {localLinks.length > 0 && (
-                        <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
-                            <span className="text-xs text-gray-500">批量操作:</span>
-                            <button
-                                onClick={switchAllToContent}
-                                className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded text-xs font-medium transition-colors flex items-center gap-1"
-                            >
-                                <AlignLeft className="w-3 h-3" />
-                                全部切换为正文
-                            </button>
-                            <button
-                                onClick={switchAllToSummary}
-                                className="px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded text-xs font-medium transition-colors flex items-center gap-1"
-                            >
-                                <FileText className="w-3 h-3" />
-                                全部切换为概要
-                            </button>
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">批量操作:</span>
+                                <button
+                                    onClick={switchAllToContent}
+                                    className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded text-xs font-medium transition-colors flex items-center gap-1"
+                                >
+                                    <AlignLeft className="w-3 h-3" />
+                                    全部切换为正文
+                                </button>
+                                <button
+                                    onClick={switchAllToSummary}
+                                    className="px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded text-xs font-medium transition-colors flex items-center gap-1"
+                                >
+                                    <FileText className="w-3 h-3" />
+                                    全部切换为概要
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={toggleSelectAll}
+                                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-medium transition-colors"
+                                >
+                                    {selectedForDeletion.size === localLinks.length ? '取消全选' : '全选'}
+                                </button>
+                                <button
+                                    onClick={deleteSelected}
+                                    disabled={selectedForDeletion.size === 0}
+                                    className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded text-xs font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    删除选中 ({selectedForDeletion.size})
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -202,7 +251,19 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
                                             : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
                                             }`}
                                     >
-                                        <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-start gap-3">
+                                            {/* Checkbox - only show for linked chapters */}
+                                            {linkType && (
+                                                <div className="pt-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedForDeletion.has(chapter.id)}
+                                                        onChange={() => toggleSelection(chapter.id)}
+                                                        className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50 cursor-pointer"
+                                                    />
+                                                </div>
+                                            )}
+
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded">

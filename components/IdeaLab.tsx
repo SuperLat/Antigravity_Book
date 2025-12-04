@@ -91,9 +91,30 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // Selected Prompts State
   const [sparkPromptId, setSparkPromptId] = useState<string>('default');
-  const [worldPromptId, setWorldPromptId] = useState<string>('default');
-  const [outlinePromptId, setOutlinePromptId] = useState<string>('default');
+  const [worldPromptId, setWorldPromptId] = useState<string>('default'); // Actually used for Outline generation
+  const [outlinePromptId, setOutlinePromptId] = useState<string>('default'); // Used for re-generating Outline
   const [beatsPromptId, setBeatsPromptId] = useState<string>('default');
+
+  // Initialize default prompts
+  const hasInitializedPrompts = useRef(false);
+  useEffect(() => {
+    if (hasInitializedPrompts.current) return;
+    if (prompts.length === 0) return;
+
+    const initDefaultPrompt = (category: string, setter: (id: string) => void) => {
+      const defaultPrompt = prompts.find(p => p.category === category && p.isDefault);
+      if (defaultPrompt) {
+        setter(defaultPrompt.id);
+      }
+    };
+
+    initDefaultPrompt('brainstorm', setSparkPromptId);
+    initDefaultPrompt('outline', setWorldPromptId);
+    initDefaultPrompt('outline', setOutlinePromptId);
+    initDefaultPrompt('beats', setBeatsPromptId);
+
+    hasInitializedPrompts.current = true;
+  }, [prompts]);
 
   const activeIdea = ideas.find(i => i.id === activeIdeaId);
 
@@ -198,8 +219,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             <div
               key={idea.id}
               className={`group flex items-stretch w-full rounded transition-colors border mb-1 overflow-hidden ${activeIdeaId === idea.id
-                  ? 'bg-gray-800 text-white border-l-yellow-500 border-l-2 border-t-transparent border-r-transparent border-b-transparent'
-                  : 'text-gray-400 border-transparent hover:bg-gray-800 hover:border-gray-700'
+                ? 'bg-gray-800 text-white border-l-yellow-500 border-l-2 border-t-transparent border-r-transparent border-b-transparent'
+                : 'text-gray-400 border-transparent hover:bg-gray-800 hover:border-gray-700'
                 }`}
             >
               <button
@@ -216,8 +237,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   onDeleteIdea(idea.id);
                 }}
                 className={`px-2 flex items-center justify-center transition-all cursor-pointer ${activeIdeaId === idea.id
-                    ? 'text-gray-400 hover:text-red-400 hover:bg-red-900/20'
-                    : 'text-gray-500 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100'
+                  ? 'text-gray-400 hover:text-red-400 hover:bg-red-900/20'
+                  : 'text-gray-500 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100'
                   }`}
                 title="删除项目"
               >

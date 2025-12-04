@@ -116,8 +116,19 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
                                 <select
                                     value={selectedCategory}
                                     onChange={(e) => {
-                                        setSelectedCategory(e.target.value as PromptCategory | '');
-                                        setSelectedTemplateId('');
+                                        const newCategory = e.target.value as PromptCategory | '';
+                                        setSelectedCategory(newCategory);
+
+                                        if (newCategory) {
+                                            const defaultPrompt = prompts.find(p => p.category === newCategory && p.isDefault);
+                                            if (defaultPrompt) {
+                                                setSelectedTemplateId(defaultPrompt.id);
+                                            } else {
+                                                setSelectedTemplateId('');
+                                            }
+                                        } else {
+                                            setSelectedTemplateId('');
+                                        }
                                     }}
                                     className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2.5 pl-3 pr-10 rounded-lg text-sm focus:outline-none focus:border-indigo-500 hover:border-gray-600"
                                 >

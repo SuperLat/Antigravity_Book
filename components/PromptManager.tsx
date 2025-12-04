@@ -48,8 +48,8 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
 
   const selectedPrompt = prompts.find(p => p.id === selectedId);
 
-  const filteredPrompts = filter === 'all' 
-    ? prompts 
+  const filteredPrompts = filter === 'all'
+    ? prompts
     : prompts.filter(p => p.category === filter);
 
   const handleCreate = () => {
@@ -103,20 +103,20 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
 
         {/* Filters */}
         <div className="p-2 border-b border-gray-800 overflow-x-auto whitespace-nowrap custom-scrollbar flex space-x-2">
-          <button 
+          <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1 text-xs rounded-full border transition-colors ${filter === 'all' ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-transparent hover:bg-gray-800'}`}
           >
             全部
           </button>
           {CATEGORIES.map(cat => (
-             <button 
-             key={cat.value}
-             onClick={() => setFilter(cat.value)}
-             className={`px-3 py-1 text-xs rounded-full border transition-colors ${filter === cat.value ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-transparent hover:bg-gray-800'}`}
-           >
-             {cat.label.split(' ')[0]}
-           </button>
+            <button
+              key={cat.value}
+              onClick={() => setFilter(cat.value)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${filter === cat.value ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-transparent hover:bg-gray-800'}`}
+            >
+              {cat.label.split(' ')[0]}
+            </button>
           ))}
         </div>
 
@@ -125,29 +125,29 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
             <div
               key={prompt.id}
               onClick={() => setSelectedId(prompt.id)}
-              className={`w-full text-left px-3 py-3 rounded text-sm transition-colors group relative cursor-pointer flex items-center justify-between ${
-                selectedId === prompt.id 
-                  ? 'bg-gray-800 text-white border-l-2 border-green-500' 
-                  : 'text-gray-400 hover:bg-gray-800 border-l-2 border-transparent'
-              }`}
+              className={`w-full text-left px-3 py-3 rounded text-sm transition-colors group relative cursor-pointer flex items-center justify-between ${selectedId === prompt.id
+                ? 'bg-gray-800 text-white border-l-2 border-green-500'
+                : 'text-gray-400 hover:bg-gray-800 border-l-2 border-transparent'
+                }`}
             >
               <div className="flex-1 min-w-0 mr-2">
                 <div className="font-medium flex items-center">
                   <span className="truncate">{prompt.name}</span>
                   {prompt.isBuiltIn && <span className="text-[10px] bg-gray-700 px-1 rounded text-gray-400 ml-2 shrink-0">内置</span>}
+                  {prompt.isDefault && <span className="text-[10px] bg-yellow-900/50 text-yellow-500 border border-yellow-700/50 px-1 rounded ml-2 shrink-0">默认</span>}
                 </div>
                 <div className="text-xs opacity-50 line-clamp-1 mt-0.5">{prompt.description}</div>
               </div>
 
               {!prompt.isBuiltIn && (
-                 <button
-                   type="button"
-                   onClick={(e) => handleDeleteClick(e, prompt.id)}
-                   className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors z-10 shrink-0"
-                   title="删除"
-                 >
-                   <Trash2 className="w-4 h-4" />
-                 </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteClick(e, prompt.id)}
+                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors z-10 shrink-0"
+                  title="删除"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               )}
             </div>
           ))}
@@ -158,7 +158,7 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
       <div className="flex-1 flex flex-col bg-gray-950 overflow-y-auto">
         {selectedPrompt ? (
           <div className="max-w-4xl mx-auto w-full p-8 space-y-6">
-            
+
             {/* Header / Meta */}
             <div className="flex justify-between items-start border-b border-gray-800 pb-6">
               <div className="space-y-4 flex-1 mr-8">
@@ -188,12 +188,39 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
               </div>
 
               <div className="flex items-center space-x-2">
+                {/* Default Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Toggle default status
+                    const newIsDefault = !selectedPrompt.isDefault;
+
+                    // If setting to default, unset others in same category
+                    if (newIsDefault) {
+                      prompts.forEach(p => {
+                        if (p.category === selectedPrompt.category && p.id !== selectedPrompt.id && p.isDefault) {
+                          onUpdatePrompt({ ...p, isDefault: false });
+                        }
+                      });
+                    }
+
+                    onUpdatePrompt({ ...selectedPrompt, isDefault: newIsDefault });
+                  }}
+                  className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${selectedPrompt.isDefault
+                    ? 'bg-yellow-600/20 border-yellow-600/50 text-yellow-400 hover:bg-yellow-600/30'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  title={selectedPrompt.isDefault ? "当前分类的默认指令" : "设为当前分类默认指令"}
+                >
+                  <Check className={`w-4 h-4 mr-1.5 ${selectedPrompt.isDefault ? 'opacity-100' : 'opacity-0'}`} />
+                  默认
+                </button>
+
                 <button
                   type="button"
                   onClick={handleManualSave}
-                  className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg ${
-                    showSaved ? 'bg-green-600 text-white shadow-green-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
-                  }`}
+                  className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg ${showSaved ? 'bg-green-600 text-white shadow-green-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                    }`}
                   title="自动保存生效中，点击可确认"
                 >
                   {showSaved ? <Check className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
@@ -217,18 +244,18 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
             <div className="space-y-3 flex-1 flex flex-col min-h-[400px]">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-semibold text-gray-500 uppercase flex items-center">
-                   <Command className="w-3 h-3 mr-1" /> 提示词模板 (Prompt Template)
+                  <Command className="w-3 h-3 mr-1" /> 提示词模板 (Prompt Template)
                 </label>
                 <div className="flex space-x-2">
-                   <button onClick={() => handleCopyVariable('{{context}}')} className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-indigo-300 border border-indigo-500/20 transition-colors">
-                     + 上下文 {'{{context}}'}
-                   </button>
-                   <button onClick={() => handleCopyVariable('{{input}}')} className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-yellow-300 border border-yellow-500/20 transition-colors">
-                     + 用户输入 {'{{input}}'}
-                   </button>
+                  <button onClick={() => handleCopyVariable('{{context}}')} className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-indigo-300 border border-indigo-500/20 transition-colors">
+                    + 上下文 {'{{context}}'}
+                  </button>
+                  <button onClick={() => handleCopyVariable('{{input}}')} className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-yellow-300 border border-yellow-500/20 transition-colors">
+                    + 用户输入 {'{{input}}'}
+                  </button>
                 </div>
               </div>
-              
+
               <div className="relative flex-1">
                 <textarea
                   value={selectedPrompt.template}

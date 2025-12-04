@@ -308,8 +308,16 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                   <select
                     value={selectedCategory}
                     onChange={(e) => {
-                      setSelectedCategory(e.target.value as PromptCategory);
-                      setSelectedTemplateId('');
+                      const newCategory = e.target.value as PromptCategory;
+                      setSelectedCategory(newCategory);
+
+                      // Auto-select default prompt for this category
+                      const defaultPrompt = prompts.find(p => p.category === newCategory && p.isDefault);
+                      if (defaultPrompt) {
+                        setSelectedTemplateId(defaultPrompt.id);
+                      } else {
+                        setSelectedTemplateId('');
+                      }
                     }}
                     className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500"
                   >

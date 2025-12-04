@@ -49,6 +49,7 @@ export interface PromptTemplate {
   template: string; // Uses {{context}} {{input}} placeholders
   category: PromptCategory;
   isBuiltIn?: boolean; // If true, cannot be deleted (but can be edited or reset ideally, simple implementation: read-only or editable)
+  isDefault?: boolean; // If true, this is the default prompt for its category
 }
 
 // --- Idea Lab Interfaces ---
