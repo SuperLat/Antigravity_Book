@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Book, FileText, BookOpen, Settings, Library, Database, ChevronLeft, LayoutDashboard } from 'lucide-react';
+import { Book, FileText, BookOpen, Settings, Library, Database, ChevronLeft, LayoutDashboard, Trash2 } from 'lucide-react';
 import { Book as BookType } from '../types';
 
 interface SidebarProps {
@@ -8,17 +8,19 @@ interface SidebarProps {
   activeChapterId: string;
   onSelectChapter: (id: string) => void;
   onCreateChapter: () => void;
+  onDeleteChapter: (id: string) => void;
   activeView: 'editor' | 'wiki';
   onSelectView: (view: 'editor' | 'wiki') => void;
   onBackToShelf: () => void;
   onOpenSettings: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  book, 
-  activeChapterId, 
+export const Sidebar: React.FC<SidebarProps> = ({
+  book,
+  activeChapterId,
   onSelectChapter,
   onCreateChapter,
+  onDeleteChapter,
   activeView,
   onSelectView,
   onBackToShelf,
@@ -28,7 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full shrink-0">
       {/* Header */}
       <div className="p-4 border-b border-gray-800">
-        <button 
+        <button
           onClick={onBackToShelf}
           className="flex items-center text-xs text-gray-500 hover:text-indigo-400 transition-colors mb-3 group"
         >
@@ -43,13 +45,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation Mode */}
       <div className="flex p-2 gap-2 border-b border-gray-800">
-        <button 
+        <button
           onClick={() => onSelectView('editor')}
           className={`flex-1 flex items-center justify-center py-2 rounded text-xs font-medium transition-colors ${activeView === 'editor' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
         >
           <BookOpen className="w-3 h-3 mr-1" /> 写作
         </button>
-        <button 
+        <button
           onClick={() => onSelectView('wiki')}
           className={`flex-1 flex items-center justify-center py-2 rounded text-xs font-medium transition-colors ${activeView === 'wiki' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
         >
@@ -66,20 +68,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded">{book.chapters.length}</span>
             </div>
             {book.chapters.map(chapter => (
-              <button
-                key={chapter.id}
-                onClick={() => onSelectChapter(chapter.id)}
-                className={`w-full text-left px-3 py-2 rounded flex items-center text-sm transition-colors group ${
-                  activeChapterId === chapter.id 
-                    ? 'bg-gray-800 text-white border-l-2 border-indigo-500' 
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                }`}
-              >
-                <FileText className={`w-4 h-4 mr-2 transition-opacity ${activeChapterId === chapter.id ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`} />
-                <span className="truncate">{chapter.title || "未命名章节"}</span>
-              </button>
+              <div key={chapter.id} className="group relative">
+                <button
+                  onClick={() => onSelectChapter(chapter.id)}
+                  className={`w-full text-left px-3 py-2 rounded flex items-center text-sm transition-colors ${activeChapterId === chapter.id
+                      ? 'bg-gray-800 text-white border-l-2 border-indigo-500'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    }`}
+                >
+                  <FileText className={`w-4 h-4 mr-2 transition-opacity ${activeChapterId === chapter.id ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`} />
+                  <span className="truncate flex-1">{chapter.title || "未命名章节"}</span>
+                </button>
+                {book.chapters.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteChapter(chapter.id);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-all"
+                    title="删除章节"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             ))}
-            <button 
+            <button
               onClick={onCreateChapter}
               className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:text-indigo-400 flex items-center mt-2 border border-dashed border-gray-800 rounded hover:border-indigo-500/50 transition-all"
             >
@@ -88,17 +102,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4 px-4 text-center">
-             <Database className="w-8 h-8 opacity-20" />
-             <p className="text-xs">
-               请在主视图管理<br/>世界观与角色卡片
-             </p>
+            <Database className="w-8 h-8 opacity-20" />
+            <p className="text-xs">
+              请在主视图管理<br />世界观与角色卡片
+            </p>
           </div>
         )}
       </div>
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-800">
-        <button 
+        <button
           onClick={onOpenSettings}
           className="flex items-center text-sm text-gray-400 hover:text-white transition-colors w-full"
         >

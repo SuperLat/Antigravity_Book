@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X } from 'lucide-react';
+import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X, Link } from 'lucide-react';
 import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter } from '../types';
+import { ChapterLinkModal, ChapterLink } from './ChapterLinkModal';
 
 interface ContextPanelProps {
   entities: Entity[];
@@ -9,8 +10,8 @@ interface ContextPanelProps {
   onToggleEntity: (id: string) => void;
   chapters?: Chapter[];
   activeChapterId?: string;
-  selectedChapterIds?: string[];
-  onToggleChapter?: (id: string) => void;
+  chapterLinks?: ChapterLink[];
+  onUpdateChapterLinks?: (links: ChapterLink[]) => void;
   onGenerate: (prompt: string) => Promise<void>;
   isGenerating: boolean;
   chatHistory: ChatMessage[];
@@ -42,8 +43,8 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   onToggleEntity,
   chapters,
   activeChapterId,
-  selectedChapterIds,
-  onToggleChapter,
+  chapterLinks,
+  onUpdateChapterLinks,
   onGenerate,
   isGenerating,
   chatHistory,
@@ -58,6 +59,9 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
   // Model Selection State
   const [selectedModel, setSelectedModel] = useState<string>('');
+
+  // Chapter Link Modal State
+  const [showChapterLinkModal, setShowChapterLinkModal] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -200,25 +204,44 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
             {/* Chapters Section */}
             {chapters && chapters.length > 1 && (
               <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
-                  <Book className="w-3 h-3 mr-1" /> 相关章节
-                </h3>
-                <div className="space-y-1">
-                  {chapters.filter(c => c.id !== activeChapterId).map(chapter => (
-                    <label key={chapter.id} className="flex items-start p-2 hover:bg-gray-800 rounded cursor-pointer group transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={selectedChapterIds?.includes(chapter.id)}
-                        onChange={() => onToggleChapter?.(chapter.id)}
-                        className="mt-1 rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
-                      />
-                      <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-200 group-hover:text-white">{chapter.title}</div>
-                        <div className="text-xs text-gray-500 line-clamp-1">{chapter.summary || '暂无摘要'}</div>
-                      </div>
-                    </label>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center">
+                    <Book className="w-3 h-3 mr-1" /> 关联章节
+                  </h3>
+                  <button
+                    onClick={() => setShowChapterLinkModal(true)}
+                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded text-xs transition-colors"
+                  >
+                    <Link className="w-3 h-3" />
+                    管理关联
+                  </button>
                 </div>
+
+                {chapterLinks && chapterLinks.length > 0 ? (
+                  <div className="space-y-1">
+                    {chapterLinks.map(link => {
+                      const chapter = chapters.find(c => c.id === link.chapterId);
+                      if (!chapter) return null;
+
+                      return (
+                        <div key={link.chapterId} className="p-2 bg-gray-800/50 rounded border border-gray-700">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-200 truncate">{chapter.title}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {link.type === 'content' ? '📄 正文' : '📝 概要'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-600 text-center py-4">
+                    暂无关联章节
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -368,6 +391,21 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Chapter Link Modal */}
+      {chapters && activeChapterId && (
+        <ChapterLinkModal
+          isOpen={showChapterLinkModal}
+          onClose={() => setShowChapterLinkModal(false)}
+          chapters={chapters}
+          activeChapterId={activeChapterId}
+          selectedLinks={chapterLinks || []}
+          onSave={(links) => {
+            onUpdateChapterLinks?.(links);
+            setShowChapterLinkModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };

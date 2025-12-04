@@ -129,6 +129,64 @@ export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ succe
   }
 };
 
+// Generate chapter summary
+export const generateChapterSummary = async (
+  modelConfig: ModelConfig,
+  chapterContent: string,
+  customTemplate?: string
+): Promise<string> => {
+  let finalPrompt = '';
+
+  if (customTemplate) {
+    finalPrompt = customTemplate
+      .replace(/{{content}}/g, chapterContent)
+      .replace(/{{input}}/g, chapterContent);
+  } else {
+    finalPrompt = `
+      请为以下章节内容生成一个简洁的概要（100-200字）：
+
+      【章节内容】
+      ${chapterContent}
+
+      要求：
+      1. 概括本章的核心事件和情节发展
+      2. 提及关键角色和他们的行动
+      3. 突出本章的冲突或转折点
+      4. 简明扼要，便于后续章节参考
+
+      请直接输出概要内容，不要包含其他说明。
+    `;
+  }
+
+  const systemInstruction = "你是一个专业的小说编辑。请为章节内容生成精炼的概要，帮助作者把握故事脉络。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.5,
+          maxOutputTokens: 500,
+        }
+      });
+      return response.text || "未能生成概要。";
+    } else {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
+  } catch (error) {
+    throw new Error(`生成概要失败: ${(error as Error).message}`);
+  }
+};
+
 interface GenerationParams {
   modelConfig: ModelConfig;
   userPrompt: string;

@@ -7,8 +7,10 @@ import { Bookshelf } from './components/Bookshelf';
 import { IdeaLab } from './components/IdeaLab';
 import { PromptManager } from './components/PromptManager';
 import { SettingsModal } from './components/SettingsModal';
-import { generateNovelContent, generateWorldviewFromIdea } from './services/geminiService';
+import { ChapterSummaryModal } from './components/ChapterSummaryModal';
+import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary } from './services/geminiService';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
+import { ChapterLink } from './components/ChapterLinkModal';
 import { Library, Lightbulb, Settings, Terminal, Minimize2 } from 'lucide-react';
 
 // --- MOCK DATA ---
@@ -168,11 +170,14 @@ const App: React.FC = () => {
   const [activeChapterId, setActiveChapterId] = useState<string>('');
   const [activeView, setActiveView] = useState<'editor' | 'wiki'>('editor');
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
+  const [chapterLinks, setChapterLinks] = useState<ChapterLink[]>([]);
 
   // Chat State
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Summary Modal State
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   // Derived
   const activeBook = books.find(b => b.id === activeBookId);
@@ -182,11 +187,13 @@ const App: React.FC = () => {
   const handleSelectBook = (id: string) => {
     setActiveBookId(id);
     const book = books.find(b => b.id === id);
-    if (book && book.chapters.length > 0) setActiveChapterId(book.chapters[0].id);
+    if (book && book.chapters.length > 0) {
+      setActiveChapterId(book.chapters[0].id);
+    }
     setActiveView('editor');
     setChatHistory([]);
     setSelectedEntityIds([]);
-    setSelectedChapterIds([]);
+    setChapterLinks([]);
   };
 
   const handleCreateBook = (newBookData: Omit<Book, 'id' | 'chapters' | 'entities'>) => {
@@ -313,9 +320,44 @@ const App: React.FC = () => {
     setActiveChapterId(newChapter.id);
   };
 
+  const handleDeleteChapter = (id: string) => {
+    if (!activeBook) return;
+    if (activeBook.chapters.length <= 1) {
+      alert('至少需要保留一个章节');
+      return;
+    }
+    if (window.confirm('确定要删除这个章节吗？')) {
+      updateActiveBook(book => {
+        const newChapters = book.chapters.filter(c => c.id !== id);
+        return { ...book, chapters: newChapters };
+      });
+      // If deleting active chapter, switch to first chapter
+      if (activeChapterId === id) {
+        const remainingChapters = activeBook.chapters.filter(c => c.id !== id);
+        setActiveChapterId(remainingChapters[0]?.id || '');
+      }
+    }
+  };
+
   const handleAddEntity = (entity: Entity) => updateActiveBook(b => ({ ...b, entities: [...b.entities, entity] }));
   const handleUpdateEntity = (entity: Entity) => updateActiveBook(b => ({ ...b, entities: b.entities.map(e => e.id === entity.id ? entity : e) }));
   const handleDeleteEntity = (id: string) => updateActiveBook(b => ({ ...b, entities: b.entities.filter(e => e.id !== id) }));
+
+  // --- Chapter Summary Handlers ---
+  const handleGenerateSummary = async (chapterContent: string, modelId: string, promptTemplate?: string): Promise<string> => {
+    const selectedModel = settings.models?.find(m => m.id === modelId);
+    if (!selectedModel) {
+      throw new Error('选择的模型不存在');
+    }
+    return await generateChapterSummary(selectedModel, chapterContent, promptTemplate);
+  };
+
+  const handleSaveSummary = (summary: string) => {
+    updateActiveBook(book => ({
+      ...book,
+      chapters: book.chapters.map(c => c.id === activeChapterId ? { ...c, summary } : c)
+    }));
+  };
 
   // --- AI Handlers ---
   const handleGenerate = async (prompt: string) => {
@@ -326,7 +368,18 @@ const App: React.FC = () => {
 
     try {
       const selectedEntities = activeBook.entities.filter(e => selectedEntityIds.includes(e.id));
-      const selectedChapters = activeBook.chapters.filter(c => selectedChapterIds.includes(c.id));
+
+      // Get linked chapters based on chapterLinks
+      const selectedChapters = chapterLinks.map(link => {
+        const chapter = activeBook.chapters.find(c => c.id === link.chapterId);
+        if (!chapter) return null;
+
+        // Return chapter with only the requested content type
+        if (link.type === 'summary') {
+          return { ...chapter, content: chapter.summary || '' };
+        }
+        return chapter;
+      }).filter(Boolean) as Chapter[];
 
       // Get the default model or first available model
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
@@ -395,6 +448,7 @@ const App: React.FC = () => {
             activeChapterId={activeChapterId}
             onSelectChapter={setActiveChapterId}
             onCreateChapter={handleCreateChapter}
+            onDeleteChapter={handleDeleteChapter}
             activeView={activeView}
             onSelectView={setActiveView}
             onBackToShelf={() => setActiveBookId(null)}
@@ -413,6 +467,7 @@ const App: React.FC = () => {
                 chapter={activeChapter}
                 onChange={handleUpdateChapterContent}
                 onTitleChange={handleUpdateChapterTitle}
+                onOpenSummary={() => setShowSummaryModal(true)}
                 fontSize={settings.appearance.fontSize}
               />
               {!settings.appearance.immersiveMode && (
@@ -422,14 +477,24 @@ const App: React.FC = () => {
                   onToggleEntity={(id) => setSelectedEntityIds(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id])}
                   chapters={activeBook.chapters}
                   activeChapterId={activeChapterId}
-                  selectedChapterIds={selectedChapterIds}
-                  onToggleChapter={(id) => setSelectedChapterIds(p => p.includes(id) ? p.filter(c => c !== id) : [...p, id])}
+                  chapterLinks={chapterLinks}
+                  onUpdateChapterLinks={setChapterLinks}
                   onGenerate={handleGenerate}
                   isGenerating={isGenerating}
                   chatHistory={chatHistory}
                   prompts={prompts}
                 />
               )}
+              <ChapterSummaryModal
+                isOpen={showSummaryModal}
+                onClose={() => setShowSummaryModal(false)}
+                chapter={activeChapter}
+                prompts={prompts}
+                models={settings.models || []}
+                defaultModelId={settings.defaultModelId || ''}
+                onGenerateSummary={handleGenerateSummary}
+                onSaveSummary={handleSaveSummary}
+              />
             </>
           ) : (
             <WikiView
