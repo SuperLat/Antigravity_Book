@@ -8,10 +8,12 @@ import { IdeaLab } from './components/IdeaLab';
 import { PromptManager } from './components/PromptManager';
 import { SettingsModal } from './components/SettingsModal';
 import { ChapterSummaryModal } from './components/ChapterSummaryModal';
+import { AuthPage } from './components/AuthPage';
 import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary } from './services/geminiService';
+import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI } from './services/api';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
 import { ChapterLink } from './components/ChapterLinkModal';
-import { Library, Lightbulb, Settings, Terminal, Minimize2 } from 'lucide-react';
+import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2 } from 'lucide-react';
 
 // --- MOCK DATA ---
 const MOCK_ENTITIES_BOOK1: Entity[] = [
@@ -132,14 +134,16 @@ const migrateSettings = (settings: AppSettings): AppSettings => {
 };
 
 const App: React.FC = () => {
-  // Global State with Lazy Initialization
-  const [books, setBooks] = useState<Book[]>(() => loadFromStorage('novelcraft_books', INITIAL_BOOKS));
-  const [ideas, setIdeas] = useState<IdeaProject[]>(() => loadFromStorage('novelcraft_ideas', []));
-  const [prompts, setPrompts] = useState<PromptTemplate[]>(() => loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS));
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
-    return migrateSettings(loaded);
-  });
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+
+  // Global State - Initially empty, loaded from API
+  const [books, setBooks] = useState<Book[]>([]);
+  const [ideas, setIdeas] = useState<IdeaProject[]>([]);
+  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
 
@@ -148,22 +152,130 @@ const App: React.FC = () => {
 
   const [showSettings, setShowSettings] = useState(false);
 
-  // --- Persistence Effects ---
+  // --- Check Auth on Mount ---
   useEffect(() => {
-    localStorage.setItem('novelcraft_books', JSON.stringify(books));
-  }, [books]);
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setIsAuthenticated(false);
+        setIsAuthChecking(false);
+        return;
+      }
+
+      try {
+        await authAPI.getCurrentUser();
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        localStorage.removeItem('token');
+        setIsAuthenticated(false);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // --- Load Data from API on Mount (Only if Authenticated) ---
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+
+        // Load all data in parallel
+        const [booksData, ideasData, promptsData, settingsData] = await Promise.all([
+          booksAPI.getAll().catch(() => loadFromStorage('novelcraft_books', INITIAL_BOOKS)),
+          ideasAPI.getAll().catch(() => loadFromStorage('novelcraft_ideas', [])),
+          promptsAPI.getAll().catch(() => loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS)),
+          settingsAPI.get().catch(() => {
+            const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
+            return migrateSettings(loaded);
+          })
+        ]);
+
+        setBooks(booksData.length > 0 ? booksData : INITIAL_BOOKS);
+        setIdeas(ideasData);
+        setPrompts(promptsData.length > 0 ? promptsData : DEFAULT_PROMPTS);
+        setSettings(settingsData ? migrateSettings(settingsData) : DEFAULT_SETTINGS);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        // Fallback to LocalStorage
+        setBooks(loadFromStorage('novelcraft_books', INITIAL_BOOKS));
+        setIdeas(loadFromStorage('novelcraft_ideas', []));
+        setPrompts(loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS));
+        const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
+        setSettings(migrateSettings(loaded));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // --- Debounced Save to API ---
+  useEffect(() => {
+    if (isLoading) return; // Don't save during initial load
+
+    const saveBooks = async () => {
+      try {
+        await Promise.all(books.map(book => booksAPI.save(book)));
+        // Also save to localStorage as backup
+        localStorage.setItem('novelcraft_books', JSON.stringify(books));
+      } catch (error) {
+        console.error('Failed to save books:', error);
+      }
+    };
+
+    const timer = setTimeout(saveBooks, 1000); // Debounce 1 second
+    return () => clearTimeout(timer);
+  }, [books, isLoading]);
 
   useEffect(() => {
-    localStorage.setItem('novelcraft_ideas', JSON.stringify(ideas));
-  }, [ideas]);
+    if (isLoading) return;
+
+    const saveIdeas = async () => {
+      try {
+        await Promise.all(ideas.map(idea => ideasAPI.save(idea)));
+        localStorage.setItem('novelcraft_ideas', JSON.stringify(ideas));
+      } catch (error) {
+        console.error('Failed to save ideas:', error);
+      }
+    };
+
+    const timer = setTimeout(saveIdeas, 1000);
+    return () => clearTimeout(timer);
+  }, [ideas, isLoading]);
 
   useEffect(() => {
-    localStorage.setItem('novelcraft_prompts', JSON.stringify(prompts));
-  }, [prompts]);
+    if (isLoading) return;
 
-  const handleSaveSettings = (newSettings: AppSettings) => {
+    const savePrompts = async () => {
+      try {
+        await Promise.all(prompts.map(prompt => promptsAPI.save(prompt)));
+        localStorage.setItem('novelcraft_prompts', JSON.stringify(prompts));
+      } catch (error) {
+        console.error('Failed to save prompts:', error);
+      }
+    };
+
+    const timer = setTimeout(savePrompts, 1000);
+    return () => clearTimeout(timer);
+  }, [prompts, isLoading]);
+
+  const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('novelcraft_settings', JSON.stringify(newSettings));
+    try {
+      await settingsAPI.save(newSettings);
+      localStorage.setItem('novelcraft_settings', JSON.stringify(newSettings));
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      // Fallback to localStorage only
+      localStorage.setItem('novelcraft_settings', JSON.stringify(newSettings));
+    }
   };
 
   // Active Book State
@@ -429,6 +541,35 @@ const App: React.FC = () => {
       setIsGenerating(false);
     }
   };
+
+  // --- Auth Check ---
+  if (isAuthChecking) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-100">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthPage onLogin={() => {
+      setIsAuthenticated(true);
+      // Trigger data load
+      window.location.reload();
+    }} />;
+  }
+
+  // --- Loading State ---
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-400">加载数据中...</p>
+        </div>
+      </div>
+    );
+  }
 
   // --- View Selection ---
 

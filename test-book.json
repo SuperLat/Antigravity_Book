@@ -1,0 +1,9 @@
+{
+    "id": "test1",
+    "title": "测试书籍",
+    "author": "测试作者",
+    "description": "这是一个测试",
+    "status": "serializing",
+    "chapters": [],
+    "entities": []
+}

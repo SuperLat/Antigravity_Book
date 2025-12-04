@@ -30,6 +30,8 @@ const callOpenAICompatible = async (
       baseUrl = '/api/openai/v1';
     } else if (modelConfig.provider === 'custom') {
       baseUrl = '/api/deepseek';
+    } else if (modelConfig.provider === 'gemini') {
+      baseUrl = '/v1beta/openai/';
     }
   }
 
