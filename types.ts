@@ -74,23 +74,39 @@ export interface IdeaProject {
 
 export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'ollama' | 'custom';
 
+// Legacy interface for backward compatibility
 export interface AIConfig {
   provider: AIProvider;
   apiKey: string;
-  baseUrl?: string; // For Ollama or custom endpoints
+  baseUrl?: string;
   modelName: string;
   temperature: number;
   maxTokens: number;
-  contextWindow: number; // Not strictly used in API call but used for UI truncation logic if implemented
+  contextWindow: number;
+}
+
+// New model configuration interface
+export interface ModelConfig {
+  id: string;
+  name: string; // User-friendly name
+  provider: AIProvider;
+  apiKey: string;
+  baseUrl?: string; // Custom endpoint for all providers
+  modelName: string;
+  temperature: number;
+  maxTokens: number;
+  contextWindow: number;
 }
 
 export interface AppearanceConfig {
-  theme: 'dark' | 'light'; // Currently only dark is implemented fully
+  theme: 'dark' | 'light';
   fontSize: 'small' | 'medium' | 'large' | 'xlarge';
   immersiveMode: boolean;
 }
 
 export interface AppSettings {
-  ai: AIConfig;
+  ai?: AIConfig; // Legacy field for migration
+  models?: ModelConfig[];
+  defaultModelId?: string;
   appearance: AppearanceConfig;
 }

@@ -1,23 +1,136 @@
-
 import { GoogleGenAI } from "@google/genai";
-import { Entity, Chapter, EntityType, AIConfig, ChapterBeat } from '../types';
+import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat } from '../types';
 
 // Default env key
 const DEFAULT_API_KEY = process.env.API_KEY || '';
 
-let aiClient: GoogleGenAI | null = null;
-let currentKey: string | null = null;
+let geminiClient: GoogleGenAI | null = null;
+let currentGeminiKey: string | null = null;
 
-export const initializeGemini = (apiKey?: string) => {
+const initializeGemini = (apiKey?: string) => {
   const keyToUse = apiKey || DEFAULT_API_KEY;
-  if (keyToUse && keyToUse !== currentKey) {
-    aiClient = new GoogleGenAI({ apiKey: keyToUse });
-    currentKey = keyToUse;
+  if (keyToUse && keyToUse !== currentGeminiKey) {
+    geminiClient = new GoogleGenAI({ apiKey: keyToUse });
+    currentGeminiKey = keyToUse;
+  }
+};
+
+// OpenAI-compatible API call (for DeepSeek, OpenAI, etc.)
+const callOpenAICompatible = async (
+  modelConfig: ModelConfig,
+  messages: Array<{ role: string; content: string }>,
+  systemInstruction?: string
+): Promise<string> => {
+  // Use proxy for CORS issues
+  let baseUrl = modelConfig.baseUrl || '';
+
+  // If no custom URL, use proxy
+  if (!baseUrl) {
+    if (modelConfig.provider === 'openai') {
+      baseUrl = '/api/openai/v1';
+    } else if (modelConfig.provider === 'custom') {
+      baseUrl = '/api/deepseek';
+    }
+  }
+
+  const requestBody: any = {
+    model: modelConfig.modelName,
+    messages: systemInstruction
+      ? [{ role: 'system', content: systemInstruction }, ...messages]
+      : messages,
+    temperature: modelConfig.temperature,
+    max_tokens: modelConfig.maxTokens,
+  };
+
+  console.log('🚀 API 请求:', {
+    url: `${baseUrl}/chat/completions`,
+    provider: modelConfig.provider,
+    model: modelConfig.modelName,
+  });
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${modelConfig.apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API 错误响应:', errorText);
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log('✅ API 响应成功');
+    return data.choices[0]?.message?.content || '未能生成内容。';
+  } catch (error: any) {
+    console.error('❌ API 调用失败:', error);
+    if (error.message === 'Failed to fetch') {
+      throw new Error('网络请求失败。请检查：\n1. API Key 是否正确\n2. 网络连接是否正常\n3. API 服务是否可用');
+    }
+    throw error;
+  }
+};
+
+// Test model configuration
+export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ success: boolean; message: string }> => {
+  try {
+    console.log('🧪 测试模型配置:', modelConfig.name);
+
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) {
+        return { success: false, message: 'API Key 未配置' };
+      }
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: '请回复"测试成功"',
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 50,
+        }
+      });
+
+      const result = response.text || '';
+      return {
+        success: true,
+        message: `✅ 连接成功！\n模型响应: ${result.substring(0, 50)}${result.length > 50 ? '...' : ''}`
+      };
+    } else {
+      const result = await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: '请回复"测试成功"' }],
+        '你是一个测试助手，请简短回复。'
+      );
+
+      return {
+        success: true,
+        message: `✅ 连接成功！\n模型响应: ${result.substring(0, 50)}${result.length > 50 ? '...' : ''}`
+      };
+    }
+  } catch (error: any) {
+    console.error('❌ 测试失败:', error);
+    return {
+      success: false,
+      message: `❌ 测试失败\n错误: ${error.message}`
+    };
   }
 };
 
 interface GenerationParams {
-  aiConfig: AIConfig;
+  modelConfig: ModelConfig;
   userPrompt: string;
   selectedEntities: Entity[];
   selectedChapters: Chapter[];
@@ -36,18 +149,13 @@ const getTypeLabel = (type: EntityType) => {
 }
 
 export const generateNovelContent = async ({
-  aiConfig,
+  modelConfig,
   userPrompt,
   selectedEntities,
   selectedChapters,
   activeChapter,
   previousChapterSummary
 }: GenerationParams): Promise<string> => {
-
-  // Initialize with user provided key or fallback
-  initializeGemini(aiConfig.apiKey);
-
-  if (!aiClient) throw new Error("API Key missing. Please configure it in Settings or use the default environment.");
 
   // 1. Construct the System Context from selected Wiki items
   const contextBlock = selectedEntities.map(e =>
@@ -63,7 +171,7 @@ export const generateNovelContent = async ({
   const storyContext = `
     【前情提要】: ${previousChapterSummary || "暂无"}
     【当前章节内容 (参考)】: 
-    ${activeChapter.content.slice(-aiConfig.contextWindow)} 
+    ${activeChapter.content.slice(-modelConfig.contextWindow)} 
     ... (以上为当前正文末尾)
   `;
 
@@ -79,18 +187,40 @@ export const generateNovelContent = async ({
     ${userPrompt}
   `;
 
-  try {
-    const response = await aiClient.models.generateContent({
-      model: aiConfig.modelName || 'gemini-2.5-flash',
-      contents: finalPrompt,
-      config: {
-        systemInstruction: "你是一位专业的小说家助手。你的目标是基于提供的世界观和角色设定，辅助用户进行小说创作、扩写或润色。请务必保持现有文本的风格和语气。所有输出默认使用中文。",
-        temperature: aiConfig.temperature,
-        maxOutputTokens: aiConfig.maxTokens,
-      }
-    });
+  const systemInstruction = "你是一位专业的小说家助手。你的目标是基于提供的世界观和角色设定，辅助用户进行小说创作、扩写或润色。请务必保持现有文本的风格和语气。所有输出默认使用中文。";
 
-    return response.text || "未能生成内容。";
+  try {
+    // Route to different providers
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing. Please configure it in Settings.");
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: modelConfig.temperature,
+          maxOutputTokens: modelConfig.maxTokens,
+        }
+      });
+      return response.text || "未能生成内容。";
+    } else if (modelConfig.provider === 'openai' || modelConfig.provider === 'custom') {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    } else if (modelConfig.provider === 'ollama') {
+      // Ollama uses OpenAI-compatible API
+      return await callOpenAICompatible(
+        { ...modelConfig, baseUrl: modelConfig.baseUrl || 'http://localhost:11434/v1' },
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    } else {
+      throw new Error(`不支持的提供商: ${modelConfig.provider}`);
+    }
   } catch (error) {
     console.error("AI Generation Error:", error);
     return `生成内容时出错: ${(error as Error).message}`;
@@ -98,22 +228,17 @@ export const generateNovelContent = async ({
 };
 
 export const generateWorldviewFromIdea = async (
-  aiConfig: AIConfig,
+  modelConfig: ModelConfig,
   ideaContent: string,
   customTemplate?: string
 ): Promise<string> => {
-  initializeGemini(aiConfig.apiKey);
-  if (!aiClient) throw new Error("API Key missing.");
-
   let finalPrompt = '';
 
   if (customTemplate) {
-    // Variable Injection
     finalPrompt = customTemplate
       .replace(/{{input}}/g, ideaContent)
       .replace(/{{spark}}/g, ideaContent);
   } else {
-    // Default Logic
     finalPrompt = `
       核心梗/脑洞：【${ideaContent}】
       
@@ -129,31 +254,41 @@ export const generateWorldviewFromIdea = async (
     `;
   }
 
+  const systemInstruction = "你是一个想象力丰富的世界架构师。请根据用户的灵感碎片构建宏大且逻辑自洽的小说世界观。";
+
   try {
-    const response = await aiClient.models.generateContent({
-      model: aiConfig.modelName || 'gemini-2.5-flash',
-      contents: finalPrompt,
-      config: {
-        systemInstruction: "你是一个想象力丰富的世界架构师。请根据用户的灵感碎片构建宏大且逻辑自洽的小说世界观。",
-        temperature: 0.9,
-        maxOutputTokens: 2048,
-      }
-    });
-    return response.text || "未能生成世界观。";
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.9,
+          maxOutputTokens: 2048,
+        }
+      });
+      return response.text || "未能生成世界观。";
+    } else {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
   } catch (error) {
     throw new Error(`生成失败: ${(error as Error).message}`);
   }
 };
 
 export const generateOutlineFromWorldview = async (
-  aiConfig: AIConfig,
+  modelConfig: ModelConfig,
   worldview: string,
   spark: string,
   customTemplate?: string
 ): Promise<string> => {
-  initializeGemini(aiConfig.apiKey);
-  if (!aiClient) throw new Error("API Key missing.");
-
   let finalPrompt = '';
 
   if (customTemplate) {
@@ -176,29 +311,39 @@ export const generateOutlineFromWorldview = async (
     `;
   }
 
+  const systemInstruction = "你是一个擅长构建剧情结构的小说主编。请设计情节紧凑、冲突激烈的大纲。";
+
   try {
-    const response = await aiClient.models.generateContent({
-      model: aiConfig.modelName || 'gemini-2.5-flash',
-      contents: finalPrompt,
-      config: {
-        systemInstruction: "你是一个擅长构建剧情结构的小说主编。请设计情节紧凑、冲突激烈的大纲。",
-        temperature: 0.7,
-      }
-    });
-    return response.text || "未能生成大纲。";
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        }
+      });
+      return response.text || "未能生成大纲。";
+    } else {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
   } catch (error) {
     throw new Error(`生成大纲失败: ${(error as Error).message}`);
   }
 };
 
 export const generateChapterBeatsFromOutline = async (
-  aiConfig: AIConfig,
+  modelConfig: ModelConfig,
   outline: string,
   customTemplate?: string
 ): Promise<ChapterBeat[]> => {
-  initializeGemini(aiConfig.apiKey);
-  if (!aiClient) throw new Error("API Key missing.");
-
   let promptContent = '';
 
   if (customTemplate) {
@@ -213,7 +358,6 @@ export const generateChapterBeatsFromOutline = async (
     `;
   }
 
-  // Force JSON instruction at the end to ensure parser works even with custom templates
   const finalPrompt = `
     ${promptContent}
     
@@ -229,19 +373,35 @@ export const generateChapterBeatsFromOutline = async (
     ]
   `;
 
-  try {
-    const response = await aiClient.models.generateContent({
-      model: aiConfig.modelName || 'gemini-2.5-flash',
-      contents: finalPrompt,
-      config: {
-        systemInstruction: "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。",
-        temperature: 0.6,
-        responseMimeType: "application/json"
-      }
-    });
+  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。";
 
-    const text = response.text || "[]";
-    // Clean up potential markdown code blocks if the model ignores the instruction
+  try {
+    let text = '';
+
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await geminiClient.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.6,
+          responseMimeType: "application/json"
+        }
+      });
+      text = response.text || "[]";
+    } else {
+      const result = await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+      text = result;
+    }
+
+    // Clean up potential markdown code blocks
     const jsonStr = text.replace(/```json\n?|\n?```/g, '');
     return JSON.parse(jsonStr) as ChapterBeat[];
   } catch (error) {

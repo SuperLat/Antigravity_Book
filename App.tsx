@@ -8,7 +8,7 @@ import { IdeaLab } from './components/IdeaLab';
 import { PromptManager } from './components/PromptManager';
 import { SettingsModal } from './components/SettingsModal';
 import { generateNovelContent, generateWorldviewFromIdea } from './services/geminiService';
-import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate } from './types';
+import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
 import { Library, Lightbulb, Settings, Terminal, Minimize2 } from 'lucide-react';
 
 // --- MOCK DATA ---
@@ -67,14 +67,17 @@ const DEFAULT_PROMPTS: PromptTemplate[] = [
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
-  ai: {
+  models: [{
+    id: 'default',
+    name: '默认模型',
     provider: 'gemini',
     apiKey: '',
     modelName: 'gemini-2.5-flash',
     temperature: 0.8,
     maxTokens: 2048,
     contextWindow: 2000
-  },
+  }],
+  defaultModelId: 'default',
   appearance: {
     theme: 'dark',
     fontSize: 'medium',
@@ -93,12 +96,48 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+// Migration helper: Convert old AIConfig to new ModelConfig array
+const migrateSettings = (settings: AppSettings): AppSettings => {
+  // If already migrated, return as-is
+  if (settings.models && settings.defaultModelId) {
+    return settings;
+  }
+
+  // If old format exists, migrate it
+  if (settings.ai) {
+    const defaultModel: ModelConfig = {
+      id: 'default',
+      name: '默认模型',
+      provider: settings.ai.provider,
+      apiKey: settings.ai.apiKey,
+      baseUrl: settings.ai.baseUrl,
+      modelName: settings.ai.modelName,
+      temperature: settings.ai.temperature,
+      maxTokens: settings.ai.maxTokens,
+      contextWindow: settings.ai.contextWindow,
+    };
+
+    return {
+      ...settings,
+      models: [defaultModel],
+      defaultModelId: 'default',
+      ai: undefined, // Remove legacy field
+    };
+  }
+
+  // No settings exist, return default
+  return settings;
+};
+
 const App: React.FC = () => {
   // Global State with Lazy Initialization
   const [books, setBooks] = useState<Book[]>(() => loadFromStorage('novelcraft_books', INITIAL_BOOKS));
   const [ideas, setIdeas] = useState<IdeaProject[]>(() => loadFromStorage('novelcraft_ideas', []));
   const [prompts, setPrompts] = useState<PromptTemplate[]>(() => loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS));
-  const [settings, setSettings] = useState<AppSettings>(() => loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS));
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
+    return migrateSettings(loaded);
+  });
 
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
 
@@ -288,8 +327,15 @@ const App: React.FC = () => {
     try {
       const selectedEntities = activeBook.entities.filter(e => selectedEntityIds.includes(e.id));
       const selectedChapters = activeBook.chapters.filter(c => selectedChapterIds.includes(c.id));
+
+      // Get the default model or first available model
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) {
+        throw new Error('没有配置模型,请在设置中添加模型。');
+      }
+
       const responseText = await generateNovelContent({
-        aiConfig: settings.ai,
+        modelConfig: defaultModel,
         userPrompt: prompt,
         selectedEntities,
         selectedChapters,
@@ -309,7 +355,11 @@ const App: React.FC = () => {
     if (isGenerating) return;
     setIsGenerating(true);
     try {
-      const result = await generateWorldviewFromIdea(settings.ai, idea.content);
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) {
+        throw new Error('没有配置模型');
+      }
+      const result = await generateWorldviewFromIdea(defaultModel, idea.content);
       const newWorldview: Entity = {
         id: Date.now().toString(),
         type: EntityType.WORLDVIEW,

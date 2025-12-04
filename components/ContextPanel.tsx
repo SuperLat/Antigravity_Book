@@ -11,11 +11,10 @@ interface ContextPanelProps {
   activeChapterId?: string;
   selectedChapterIds?: string[];
   onToggleChapter?: (id: string) => void;
-  onGenerate: (prompt: string, modelName?: string) => Promise<void>;
+  onGenerate: (prompt: string) => Promise<void>;
   isGenerating: boolean;
   chatHistory: ChatMessage[];
   prompts: PromptTemplate[];
-  defaultModel: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -48,8 +47,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   onGenerate,
   isGenerating,
   chatHistory,
-  prompts,
-  defaultModel
+  prompts
 }) => {
   const [activeTab, setActiveTab] = useState<'context' | 'chat'>('context');
   const [promptInput, setPromptInput] = useState('');
@@ -59,12 +57,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   // Model Selection State
-  const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
-
-  // Sync state if default changes (optional)
-  useEffect(() => {
-    if (defaultModel) setSelectedModel(defaultModel);
-  }, [defaultModel]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -109,7 +102,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
       }
     }
 
-    onGenerate(finalPrompt, selectedModel);
+    onGenerate(finalPrompt);
     setPromptInput('');
     // NOTE: selectedTemplateId is purposely NOT reset here, allowing continuous use of the same "mode"
     setActiveTab('chat');
