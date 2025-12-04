@@ -99,9 +99,9 @@ const App: React.FC = () => {
   const [ideas, setIdeas] = useState<IdeaProject[]>(() => loadFromStorage('novelcraft_ideas', []));
   const [prompts, setPrompts] = useState<PromptTemplate[]>(() => loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS));
   const [settings, setSettings] = useState<AppSettings>(() => loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS));
-  
+
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
-  
+
   // Dashboard Navigation State
   const [dashboardTab, setDashboardTab] = useState<'bookshelf' | 'idealab' | 'prompt_manager'>('bookshelf');
 
@@ -129,7 +129,8 @@ const App: React.FC = () => {
   const [activeChapterId, setActiveChapterId] = useState<string>('');
   const [activeView, setActiveView] = useState<'editor' | 'wiki'>('editor');
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  
+  const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
+
   // Chat State
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -146,6 +147,7 @@ const App: React.FC = () => {
     setActiveView('editor');
     setChatHistory([]);
     setSelectedEntityIds([]);
+    setSelectedChapterIds([]);
   };
 
   const handleCreateBook = (newBookData: Omit<Book, 'id' | 'chapters' | 'entities'>) => {
@@ -215,16 +217,16 @@ const App: React.FC = () => {
           content: idea.outline
         }
       ],
-      chapters: idea.chapterBeats.length > 0 
+      chapters: idea.chapterBeats.length > 0
         ? idea.chapterBeats.map((beat, idx) => ({
-            id: Date.now() + `_c${idx}`,
-            title: beat.chapterTitle,
-            summary: beat.summary,
-            content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
-          }))
+          id: Date.now() + `_c${idx}`,
+          title: beat.chapterTitle,
+          summary: beat.summary,
+          content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
+        }))
         : [{ id: Date.now() + '_c', title: '第一章', content: '' }]
     };
-    
+
     setBooks(prev => [...prev, newBook]);
     alert(`成功将《${idea.title}》转化为书籍！已添加到书架。`);
     setDashboardTab('bookshelf');
@@ -285,12 +287,14 @@ const App: React.FC = () => {
 
     try {
       const selectedEntities = activeBook.entities.filter(e => selectedEntityIds.includes(e.id));
+      const selectedChapters = activeBook.chapters.filter(c => selectedChapterIds.includes(c.id));
       const responseText = await generateNovelContent({
         aiConfig: settings.ai,
         userPrompt: prompt,
         selectedEntities,
+        selectedChapters,
         activeChapter,
-        previousChapterSummary: "（暂无前情提要）" 
+        previousChapterSummary: "（暂无前情提要）"
       });
       const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: responseText, timestamp: Date.now() };
       setChatHistory(prev => [...prev, aiMsg]);
@@ -329,15 +333,15 @@ const App: React.FC = () => {
   if (activeBookId && activeBook) {
     return (
       <div className="flex h-screen bg-gray-950 text-gray-100 font-sans relative">
-        <SettingsModal 
-          isOpen={showSettings} 
+        <SettingsModal
+          isOpen={showSettings}
           onClose={() => setShowSettings(false)}
           settings={settings}
           onSave={handleSaveSettings}
         />
         {!settings.appearance.immersiveMode && (
-          <Sidebar 
-            book={activeBook} 
+          <Sidebar
+            book={activeBook}
             activeChapterId={activeChapterId}
             onSelectChapter={setActiveChapterId}
             onCreateChapter={handleCreateChapter}
@@ -349,23 +353,27 @@ const App: React.FC = () => {
         )}
         <main className="flex-1 flex overflow-hidden relative">
           {settings.appearance.immersiveMode && (
-            <button onClick={() => handleSaveSettings({...settings, appearance: {...settings.appearance, immersiveMode: false}})} className="absolute top-4 right-8 z-50 bg-gray-900/50 p-2 rounded-full backdrop-blur-sm hover:text-indigo-400">
+            <button onClick={() => handleSaveSettings({ ...settings, appearance: { ...settings.appearance, immersiveMode: false } })} className="absolute top-4 right-8 z-50 bg-gray-900/50 p-2 rounded-full backdrop-blur-sm hover:text-indigo-400">
               <Minimize2 className="w-5 h-5" />
             </button>
           )}
           {activeView === 'editor' && activeChapter ? (
             <>
-              <Editor 
-                chapter={activeChapter} 
+              <Editor
+                chapter={activeChapter}
                 onChange={handleUpdateChapterContent}
                 onTitleChange={handleUpdateChapterTitle}
                 fontSize={settings.appearance.fontSize}
               />
               {!settings.appearance.immersiveMode && (
-                <ContextPanel 
+                <ContextPanel
                   entities={activeBook.entities}
                   selectedEntityIds={selectedEntityIds}
                   onToggleEntity={(id) => setSelectedEntityIds(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id])}
+                  chapters={activeBook.chapters}
+                  activeChapterId={activeChapterId}
+                  selectedChapterIds={selectedChapterIds}
+                  onToggleChapter={(id) => setSelectedChapterIds(p => p.includes(id) ? p.filter(c => c !== id) : [...p, id])}
                   onGenerate={handleGenerate}
                   isGenerating={isGenerating}
                   chatHistory={chatHistory}
@@ -374,7 +382,7 @@ const App: React.FC = () => {
               )}
             </>
           ) : (
-            <WikiView 
+            <WikiView
               entities={activeBook.entities}
               onAddEntity={handleAddEntity}
               onUpdateEntity={handleUpdateEntity}
@@ -391,28 +399,28 @@ const App: React.FC = () => {
   // 2. Dashboard View (Bookshelf or Idea Lab)
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100 font-sans">
-      <SettingsModal 
-          isOpen={showSettings} 
-          onClose={() => setShowSettings(false)}
-          settings={settings}
-          onSave={handleSaveSettings}
-        />
-      
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={settings}
+        onSave={handleSaveSettings}
+      />
+
       {/* Activity Bar (Leftmost Slim Navigation) */}
       <div className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-6 shrink-0 z-20">
         <div className="mb-8">
-           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold font-serif text-white">N</div>
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold font-serif text-white">N</div>
         </div>
-        
-        <button 
+
+        <button
           onClick={() => setDashboardTab('bookshelf')}
           className={`p-3 rounded-lg mb-4 transition-all ${dashboardTab === 'bookshelf' ? 'bg-indigo-600/20 text-indigo-400' : 'text-gray-500 hover:text-gray-300'}`}
           title="我的书架"
         >
           <Library className="w-6 h-6" />
         </button>
-        
-        <button 
+
+        <button
           onClick={() => setDashboardTab('idealab')}
           className={`p-3 rounded-lg mb-4 transition-all ${dashboardTab === 'idealab' ? 'bg-yellow-600/20 text-yellow-400' : 'text-gray-500 hover:text-gray-300'}`}
           title="灵感实验室"
@@ -420,7 +428,7 @@ const App: React.FC = () => {
           <Lightbulb className="w-6 h-6" />
         </button>
 
-        <button 
+        <button
           onClick={() => setDashboardTab('prompt_manager')}
           className={`p-3 rounded-lg mb-4 transition-all ${dashboardTab === 'prompt_manager' ? 'bg-green-600/20 text-green-400' : 'text-gray-500 hover:text-gray-300'}`}
           title="提示词工程"
@@ -429,25 +437,25 @@ const App: React.FC = () => {
         </button>
 
         <div className="mt-auto flex flex-col items-center gap-4">
-           <button onClick={() => setShowSettings(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="全局设置">
-             <Settings className="w-5 h-5" /> 
-           </button>
+          <button onClick={() => setShowSettings(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="全局设置">
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
       {/* Main Dashboard Content */}
       <div className="flex-1 overflow-hidden bg-gray-950 relative">
         {dashboardTab === 'bookshelf' && (
-          <Bookshelf 
-            books={books} 
-            onSelectBook={handleSelectBook} 
+          <Bookshelf
+            books={books}
+            onSelectBook={handleSelectBook}
             onCreateBook={handleCreateBook}
             onDeleteBook={handleDeleteBook}
             onImportBook={handleImportBook}
           />
         )}
         {dashboardTab === 'idealab' && (
-          <IdeaLab 
+          <IdeaLab
             ideas={ideas}
             settings={settings}
             prompts={prompts}

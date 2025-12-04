@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Entity, Chapter, EntityType, AIConfig, ChapterBeat } from '../types';
 
 // Default env key
-const DEFAULT_API_KEY = process.env.API_KEY || ''; 
+const DEFAULT_API_KEY = process.env.API_KEY || '';
 
 let aiClient: GoogleGenAI | null = null;
 let currentKey: string | null = null;
@@ -20,6 +20,7 @@ interface GenerationParams {
   aiConfig: AIConfig;
   userPrompt: string;
   selectedEntities: Entity[];
+  selectedChapters: Chapter[];
   activeChapter: Chapter;
   previousChapterSummary?: string;
 }
@@ -38,18 +39,24 @@ export const generateNovelContent = async ({
   aiConfig,
   userPrompt,
   selectedEntities,
+  selectedChapters,
   activeChapter,
   previousChapterSummary
 }: GenerationParams): Promise<string> => {
-  
+
   // Initialize with user provided key or fallback
   initializeGemini(aiConfig.apiKey);
 
   if (!aiClient) throw new Error("API Key missing. Please configure it in Settings or use the default environment.");
 
   // 1. Construct the System Context from selected Wiki items
-  const contextBlock = selectedEntities.map(e => 
+  const contextBlock = selectedEntities.map(e =>
     `【${getTypeLabel(e.type)} - ${e.name}】\n简介：${e.description}\n详细内容：${e.content}`
+  ).join('\n\n');
+
+  // 1.5 Construct Context from selected Chapters
+  const chapterBlock = selectedChapters.map(c =>
+    `【参考章节 - ${c.title}】\n${c.content}`
   ).join('\n\n');
 
   // 2. Construct Writing Context (Current Story State)
@@ -64,6 +71,8 @@ export const generateNovelContent = async ({
   const finalPrompt = `
     ${contextBlock ? `--- 关联的知识库 (Wiki) ---\n${contextBlock}\n------------------------------` : ''}
     
+    ${chapterBlock ? `--- 关联的章节 (Chapters) ---\n${chapterBlock}\n------------------------------` : ''}
+
     ${storyContext}
 
     --- 你的任务 ---
@@ -148,12 +157,12 @@ export const generateOutlineFromWorldview = async (
   let finalPrompt = '';
 
   if (customTemplate) {
-     finalPrompt = customTemplate
+    finalPrompt = customTemplate
       .replace(/{{worldview}}/g, worldview)
       .replace(/{{spark}}/g, spark)
       .replace(/{{input}}/g, spark);
   } else {
-     finalPrompt = `
+    finalPrompt = `
       【核心梗】：${spark}
       【世界观设定】：${worldview}
 
@@ -230,7 +239,7 @@ export const generateChapterBeatsFromOutline = async (
         responseMimeType: "application/json"
       }
     });
-    
+
     const text = response.text || "[]";
     // Clean up potential markdown code blocks if the model ignores the instruction
     const jsonStr = text.replace(/```json\n?|\n?```/g, '');

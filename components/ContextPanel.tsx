@@ -1,12 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X } from 'lucide-react';
-import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory } from '../types';
+import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter } from '../types';
 
 interface ContextPanelProps {
   entities: Entity[];
   selectedEntityIds: string[];
   onToggleEntity: (id: string) => void;
+  chapters?: Chapter[];
+  activeChapterId?: string;
+  selectedChapterIds?: string[];
+  onToggleChapter?: (id: string) => void;
   onGenerate: (prompt: string, modelName?: string) => Promise<void>;
   isGenerating: boolean;
   chatHistory: ChatMessage[];
@@ -37,6 +41,10 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   entities,
   selectedEntityIds,
   onToggleEntity,
+  chapters,
+  activeChapterId,
+  selectedChapterIds,
+  onToggleChapter,
   onGenerate,
   isGenerating,
   chatHistory,
@@ -45,11 +53,11 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'context' | 'chat'>('context');
   const [promptInput, setPromptInput] = useState('');
-  
+
   // Prompt Selection State
   const [selectedCategory, setSelectedCategory] = useState<PromptCategory | ''>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  
+
   // Model Selection State
   const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
 
@@ -57,7 +65,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   useEffect(() => {
     if (defaultModel) setSelectedModel(defaultModel);
   }, [defaultModel]);
-  
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const characters = entities.filter(e => e.type === EntityType.CHARACTER);
@@ -67,8 +75,8 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   const quickPrompts = prompts.filter(p => ['drafting', 'refining', 'general'].includes(p.category));
 
   // Filtered prompts for the dropdown
-  const filteredTemplates = selectedCategory 
-    ? prompts.filter(p => p.category === selectedCategory) 
+  const filteredTemplates = selectedCategory
+    ? prompts.filter(p => p.category === selectedCategory)
     : [];
 
   const activeTemplate = prompts.find(p => p.id === selectedTemplateId);
@@ -86,18 +94,18 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
     // Logic: If a template is selected, we wrap the input with it.
     if (selectedTemplateId && activeTemplate) {
       const templateText = activeTemplate.template;
-      
+
       if (templateText.includes('{{input}}')) {
-         // Merge input into placeholder
-         finalPrompt = templateText.replace('{{input}}', promptInput);
+        // Merge input into placeholder
+        finalPrompt = templateText.replace('{{input}}', promptInput);
       } else {
-         // If no {{input}} placeholder, append input to the end if it exists
-         // This handles templates like "Fix grammar" where user input is the target
-         if (promptInput.trim()) {
-           finalPrompt = `${templateText}\n\n${promptInput}`;
-         } else {
-           finalPrompt = templateText;
-         }
+        // If no {{input}} placeholder, append input to the end if it exists
+        // This handles templates like "Fix grammar" where user input is the target
+        if (promptInput.trim()) {
+          finalPrompt = `${templateText}\n\n${promptInput}`;
+        } else {
+          finalPrompt = templateText;
+        }
       }
     }
 
@@ -195,30 +203,54 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Chapters Section */}
+            {chapters && chapters.length > 1 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
+                  <Book className="w-3 h-3 mr-1" /> 相关章节
+                </h3>
+                <div className="space-y-1">
+                  {chapters.filter(c => c.id !== activeChapterId).map(chapter => (
+                    <label key={chapter.id} className="flex items-start p-2 hover:bg-gray-800 rounded cursor-pointer group transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selectedChapterIds?.includes(chapter.id)}
+                        onChange={() => onToggleChapter?.(chapter.id)}
+                        className="mt-1 rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
+                      />
+                      <div className="ml-3">
+                        <div className="text-sm font-medium text-gray-200 group-hover:text-white">{chapter.title}</div>
+                        <div className="text-xs text-gray-500 line-clamp-1">{chapter.summary || '暂无摘要'}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* AI Chat Tab */
           <div className="flex flex-col h-full">
-             {/* Quick Actions */}
+            {/* Quick Actions */}
             <div className="p-3 border-b border-gray-800 bg-gray-900/50">
-               <div className="text-[10px] text-gray-500 uppercase font-semibold mb-2">常用快捷指令</div>
-               <div className="grid grid-cols-2 gap-2 max-h-24 overflow-y-auto custom-scrollbar">
+              <div className="text-[10px] text-gray-500 uppercase font-semibold mb-2">常用快捷指令</div>
+              <div className="grid grid-cols-2 gap-2 max-h-24 overflow-y-auto custom-scrollbar">
                 {quickPrompts.map(preset => (
                   <button
                     key={preset.id}
                     onClick={() => handlePresetClick(preset)}
-                    className={`px-2 py-1.5 border rounded text-xs text-left transition-colors flex items-center group ${
-                      selectedTemplateId === preset.id 
-                      ? 'bg-indigo-900/40 border-indigo-500/50 text-indigo-300' 
+                    className={`px-2 py-1.5 border rounded text-xs text-left transition-colors flex items-center group ${selectedTemplateId === preset.id
+                      ? 'bg-indigo-900/40 border-indigo-500/50 text-indigo-300'
                       : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300'
-                    }`}
+                      }`}
                     title={preset.description}
                   >
                     <Wand2 className={`w-3 h-3 mr-2 shrink-0 ${selectedTemplateId === preset.id ? 'text-indigo-400' : 'text-gray-500 group-hover:text-indigo-400'}`} />
                     <span className="truncate">{preset.name}</span>
                   </button>
                 ))}
-               </div>
+              </div>
             </div>
 
             {/* Chat History */}
@@ -232,11 +264,10 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
               )}
               {chatHistory.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[90%] rounded-lg p-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user' 
-                      ? 'bg-indigo-600 text-white' 
-                      : 'bg-gray-800 text-gray-200 border border-gray-700'
-                  }`}>
+                  <div className={`max-w-[90%] rounded-lg p-3 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-800 text-gray-200 border border-gray-700'
+                    }`}>
                     {msg.text}
                   </div>
                 </div>
@@ -261,8 +292,8 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                   <select
                     value={selectedCategory}
                     onChange={(e) => {
-                       setSelectedCategory(e.target.value as PromptCategory);
-                       setSelectedTemplateId(''); 
+                      setSelectedCategory(e.target.value as PromptCategory);
+                      setSelectedTemplateId('');
                     }}
                     className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500"
                   >
@@ -273,7 +304,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                   </select>
                   <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
-                
+
                 <div className="relative flex-1">
                   <select
                     onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -291,27 +322,27 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
                 <div className="relative flex-1">
                   <Cpu className="w-3 h-3 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                   <input 
-                      list="context-models"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-6 pr-2 w-full focus:outline-none focus:border-indigo-500 truncate"
-                      placeholder="Model..."
-                      title={`Model: ${selectedModel}`}
-                   />
+                  <input
+                    list="context-models"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-6 pr-2 w-full focus:outline-none focus:border-indigo-500 truncate"
+                    placeholder="Model..."
+                    title={`Model: ${selectedModel}`}
+                  />
                 </div>
               </div>
-              
+
               {/* Active Template Indicator (if selected) */}
               {activeTemplate && (
                 <div className="px-3 py-1 bg-indigo-900/20 border-b border-indigo-500/20 flex justify-between items-center animate-in slide-in-from-top-1">
-                   <span className="text-[10px] text-indigo-300 truncate">
-                     <Wand2 className="w-3 h-3 inline mr-1" />
-                     当前模式: <strong>{activeTemplate.name}</strong>
-                   </span>
-                   <button onClick={clearSelection} className="text-gray-500 hover:text-gray-300">
-                     <X className="w-3 h-3" />
-                   </button>
+                  <span className="text-[10px] text-indigo-300 truncate">
+                    <Wand2 className="w-3 h-3 inline mr-1" />
+                    当前模式: <strong>{activeTemplate.name}</strong>
+                  </span>
+                  <button onClick={clearSelection} className="text-gray-500 hover:text-gray-300">
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               )}
 
@@ -326,8 +357,8 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                     }
                   }}
                   placeholder={
-                    selectedTemplateId 
-                      ? `输入内容（将自动填入“${activeTemplate?.name}”指令）...` 
+                    selectedTemplateId
+                      ? `输入内容（将自动填入“${activeTemplate?.name}”指令）...`
                       : "输入对话或指令..."
                   }
                   className="w-full bg-gray-950 border border-gray-700 rounded-lg pl-3 pr-10 py-2 text-sm text-gray-200 focus:ring-1 focus:ring-indigo-500 outline-none resize-none h-20 custom-scrollbar placeholder-gray-600 transition-colors"
