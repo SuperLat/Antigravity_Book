@@ -15,6 +15,34 @@ const initializeGemini = (apiKey?: string) => {
   }
 };
 
+// Retry utility with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 1000,
+  backoff = 2
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    // Check for 429 (Too Many Requests) or 503 (Service Unavailable)
+    const isRateLimit = error.status === 429 ||
+      (error.message && error.message.includes('429')) ||
+      (error.message && error.message.includes('RESOURCE_EXHAUSTED'));
+
+    if (retries > 0 && isRateLimit) {
+      console.warn(`⚠️ API Rate Limit hit. Retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * backoff, backoff);
+    }
+
+    if (isRateLimit) {
+      throw new Error('API 调用次数超限，已重试多次无效。请检查您的 API 配额或稍后再试。');
+    }
+    throw error;
+  }
+}
+
 // OpenAI-compatible API call (for DeepSeek, OpenAI, etc.)
 const callOpenAICompatible = async (
   modelConfig: ModelConfig,
@@ -51,14 +79,14 @@ const callOpenAICompatible = async (
   });
 
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await retryWithBackoff(() => fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${modelConfig.apiKey}`,
       },
       body: JSON.stringify(requestBody),
-    });
+    }));
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -96,14 +124,14 @@ export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ succe
         return { success: false, message: 'API Key 未配置' };
       }
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: '请回复"测试成功"',
         config: {
           temperature: 0.1,
           maxOutputTokens: 50,
         }
-      });
+      }));
 
       const result = response.text || '';
       return {
@@ -111,11 +139,11 @@ export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ succe
         message: `✅ 连接成功！\n模型响应: ${result.substring(0, 50)}${result.length > 50 ? '...' : ''}`
       };
     } else {
-      const result = await callOpenAICompatible(
+      const result = await retryWithBackoff(() => callOpenAICompatible(
         modelConfig,
         [{ role: 'user', content: '请回复"测试成功"' }],
         '你是一个测试助手，请简短回复。'
-      );
+      ));
 
       return {
         success: true,
@@ -167,7 +195,7 @@ export const generateChapterSummary = async (
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing.");
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: finalPrompt,
         config: {
@@ -175,7 +203,7 @@ export const generateChapterSummary = async (
           temperature: 0.5,
           maxOutputTokens: 500,
         }
-      });
+      }));
       return response.text || "未能生成概要。";
     } else {
       return await callOpenAICompatible(
@@ -255,7 +283,7 @@ export const generateNovelContent = async ({
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing. Please configure it in Settings.");
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: finalPrompt,
         config: {
@@ -263,7 +291,7 @@ export const generateNovelContent = async ({
           temperature: modelConfig.temperature,
           maxOutputTokens: modelConfig.maxTokens,
         }
-      });
+      }));
       return response.text || "未能生成内容。";
     } else if (modelConfig.provider === 'openai' || modelConfig.provider === 'custom') {
       return await callOpenAICompatible(
@@ -321,7 +349,7 @@ export const generateWorldviewFromIdea = async (
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing.");
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: finalPrompt,
         config: {
@@ -329,7 +357,7 @@ export const generateWorldviewFromIdea = async (
           temperature: 0.9,
           maxOutputTokens: 2048,
         }
-      });
+      }));
       return response.text || "未能生成世界观。";
     } else {
       return await callOpenAICompatible(
@@ -378,14 +406,14 @@ export const generateOutlineFromWorldview = async (
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing.");
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: finalPrompt,
         config: {
           systemInstruction,
           temperature: 0.7,
         }
-      });
+      }));
       return response.text || "未能生成大纲。";
     } else {
       return await callOpenAICompatible(
@@ -442,7 +470,7 @@ export const generateChapterBeatsFromOutline = async (
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing.");
 
-      const response = await geminiClient.models.generateContent({
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
         model: modelConfig.modelName || 'gemini-2.5-flash',
         contents: finalPrompt,
         config: {
@@ -450,7 +478,7 @@ export const generateChapterBeatsFromOutline = async (
           temperature: 0.6,
           responseMimeType: "application/json"
         }
-      });
+      }));
       text = response.text || "[]";
     } else {
       const result = await callOpenAICompatible(

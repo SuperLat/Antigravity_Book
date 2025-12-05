@@ -122,4 +122,49 @@ router.get('/me', async (req, res) => {
     }
 });
 
+// Update user
+router.put('/me', async (req, res) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ message: '未授权' });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.userId);
+
+        if (!user) {
+            return res.status(404).json({ message: '用户不存在' });
+        }
+
+        const { username, email, currentPassword, newPassword } = req.body;
+
+        // Update basic info
+        if (username) user.username = username;
+        if (email) user.email = email;
+
+        // Update password if provided
+        if (newPassword) {
+            if (!currentPassword) {
+                return res.status(400).json({ message: '修改密码需要提供当前密码' });
+            }
+            const isMatch = await user.comparePassword(currentPassword);
+            if (!isMatch) {
+                return res.status(400).json({ message: '当前密码错误' });
+            }
+            user.password = newPassword;
+        }
+
+        await user.save();
+
+        res.json({
+            id: user._id,
+            username: user.username,
+            email: user.email
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

@@ -9,11 +9,12 @@ import { PromptManager } from './components/PromptManager';
 import { SettingsModal } from './components/SettingsModal';
 import { ChapterSummaryModal } from './components/ChapterSummaryModal';
 import { AuthPage } from './components/AuthPage';
+import { UserProfileModal } from './components/UserProfileModal';
 import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary } from './services/geminiService';
 import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI } from './services/api';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
 import { ChapterLink } from './components/ChapterLinkModal';
-import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2 } from 'lucide-react';
+import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User } from 'lucide-react';
 
 // --- MOCK DATA ---
 const MOCK_ENTITIES_BOOK1: Entity[] = [
@@ -149,8 +150,20 @@ const App: React.FC = () => {
 
   // Dashboard Navigation State
   const [dashboardTab, setDashboardTab] = useState<'bookshelf' | 'idealab' | 'prompt_manager'>('bookshelf');
-
   const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+    setShowProfile(false);
+    // Reset state
+    setBooks([]);
+    setIdeas([]);
+    setPrompts([]);
+    setActiveBookId(null);
+  };
 
   // --- Check Auth on Mount ---
   useEffect(() => {
@@ -214,7 +227,7 @@ const App: React.FC = () => {
     };
 
     loadData();
-  }, []);
+  }, [isAuthenticated]);
 
   // --- Debounced Save to API ---
   useEffect(() => {
@@ -693,11 +706,20 @@ const App: React.FC = () => {
         </button>
 
         <div className="mt-auto flex flex-col items-center gap-4">
+          <button onClick={() => setShowProfile(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="个人中心">
+            <User className="w-5 h-5" />
+          </button>
           <button onClick={() => setShowSettings(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="全局设置">
             <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
+
+      <UserProfileModal
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+        onLogout={handleLogout}
+      />
 
       {/* Main Dashboard Content */}
       <div className="flex-1 overflow-hidden bg-gray-950 relative">

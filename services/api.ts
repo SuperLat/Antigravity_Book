@@ -47,6 +47,10 @@ export const authAPI = {
         body: JSON.stringify(data),
     }),
     getCurrentUser: () => fetchAPI<any>('/auth/me'),
+    updateUser: (data: any) => fetchAPI<any>('/auth/me', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
 };
 
 // Books API
