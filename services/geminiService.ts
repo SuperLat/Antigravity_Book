@@ -51,6 +51,7 @@ const callOpenAICompatible = async (
 ): Promise<string> => {
   // Use proxy for CORS issues
   let baseUrl = modelConfig.baseUrl || '';
+  let useBackendProxy = false;
 
   // If no custom URL, use proxy
   if (!baseUrl) {
@@ -60,6 +61,11 @@ const callOpenAICompatible = async (
       baseUrl = '/api/deepseek';
     } else if (modelConfig.provider === 'gemini') {
       baseUrl = '/v1beta/openai/';
+    }
+  } else {
+    // If it's a custom absolute URL, use our backend proxy
+    if (baseUrl.startsWith('http')) {
+      useBackendProxy = true;
     }
   }
 
@@ -73,20 +79,31 @@ const callOpenAICompatible = async (
   };
 
   console.log('🚀 API 请求:', {
-    url: `${baseUrl}/chat/completions`,
+    url: useBackendProxy ? '/api/proxy' : `${baseUrl}/chat/completions`,
+    targetUrl: useBackendProxy ? `${baseUrl}/chat/completions` : undefined,
     provider: modelConfig.provider,
     model: modelConfig.modelName,
   });
 
   try {
-    const response = await retryWithBackoff(() => fetch(`${baseUrl}/chat/completions`, {
+    const fetchUrl = useBackendProxy ? '/api/proxy' : `${baseUrl}/chat/completions`;
+    const fetchOptions: RequestInit = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${modelConfig.apiKey}`,
       },
-      body: JSON.stringify(requestBody),
-    }));
+      body: JSON.stringify(useBackendProxy ? {
+        targetUrl: `${baseUrl}/chat/completions`,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${modelConfig.apiKey.trim()}`,
+        },
+        body: requestBody
+      } : requestBody),
+    };
+
+    const response = await retryWithBackoff(() => fetch(fetchUrl, fetchOptions));
 
     if (!response.ok) {
       const errorText = await response.text();

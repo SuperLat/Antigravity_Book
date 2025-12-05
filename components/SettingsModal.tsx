@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Cpu, Palette, Save, Monitor, ShieldCheck, Server, Plus, Trash2, Check, Zap } from 'lucide-react';
+import { X, Cpu, Palette, Save, Monitor, ShieldCheck, Server, Plus, Trash2, Check, Zap, Eye, EyeOff } from 'lucide-react';
 import { AppSettings, AIProvider, ModelConfig } from '../types';
 import { testModelConfig } from '../services/geminiService';
 
@@ -13,15 +13,6 @@ interface SettingsModalProps {
 
 const RECOMMENDED_MODELS = [
   "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-2.0-flash-thinking-exp-01-21",
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
-  "gpt-4o",
-  "gpt-4-turbo",
-  "deepseek-chat",
-  "deepseek-coder",
-  "claude-3-5-sonnet-20240620",
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {
@@ -32,6 +23,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   );
   const [testingModel, setTestingModel] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   if (!isOpen) return null;
 
@@ -42,7 +34,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
       return;
     }
     onSave(localSettings);
-    onClose();
+    // onClose(); // Keep modal open
+
+    // Optional: Show feedback
+    const btn = document.getElementById('save-settings-btn');
+    if (btn) {
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<svg class="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> 已保存';
+      btn.classList.add('bg-green-600', 'hover:bg-green-500');
+      btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+      }, 2000);
+    }
   };
 
   const selectedModel = localSettings.models?.find(m => m.id === selectedModelId);
@@ -280,13 +287,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                         <label className="block text-sm text-gray-300 mb-1.5">API Key</label>
                         <div className="relative">
                           <input
-                            type="password"
+                            type={showApiKey ? "text" : "password"}
                             value={selectedModel.apiKey}
                             onChange={(e) => handleUpdateModel({ apiKey: e.target.value })}
                             placeholder={selectedModel.provider === 'gemini' ? "使用默认环境变量 (无需输入)" : "sk-..."}
-                            className="w-full bg-gray-950 border border-gray-700 rounded-lg py-2.5 px-4 text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="w-full bg-gray-950 border border-gray-700 rounded-lg py-2.5 px-4 pr-10 text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                           />
-                          <ShieldCheck className="absolute right-3 top-2.5 w-5 h-5 text-gray-600" />
+                          <button
+                            type="button"
+                            className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-300 focus:outline-none"
+                            onMouseDown={() => setShowApiKey(true)}
+                            onMouseUp={() => setShowApiKey(false)}
+                            onMouseLeave={() => setShowApiKey(false)}
+                            onTouchStart={() => setShowApiKey(true)}
+                            onTouchEnd={() => setShowApiKey(false)}
+                            title="长按显示 Key"
+                          >
+                            {showApiKey ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                          </button>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
                           {selectedModel.provider === 'gemini'
@@ -444,6 +462,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             取消
           </button>
           <button
+            id="save-settings-btn"
             onClick={handleSave}
             className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium flex items-center shadow-lg shadow-indigo-500/20"
           >
