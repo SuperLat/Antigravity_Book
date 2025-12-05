@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText } from 'lucide-react';
+import React, { useRef } from 'react';
+import { FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import { Chapter } from '../types';
 
 interface EditorProps {
@@ -11,6 +11,7 @@ interface EditorProps {
 }
 
 export const Editor: React.FC<EditorProps> = ({ chapter, onChange, onTitleChange, onOpenSummary, fontSize }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const getFontSizeClass = () => {
     switch (fontSize) {
@@ -22,8 +23,20 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onChange, onTitleChange
     }
   };
 
+  const scrollToTop = () => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = 0;
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full w-full bg-gray-950">
+    <div className="flex-1 flex flex-col h-full w-full bg-gray-950 relative">
       {/* Header with title */}
       <div className="px-6 pt-4 pb-2 border-b border-gray-800/50">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -51,8 +64,9 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onChange, onTitleChange
       </div>
 
       {/* Writing area - full width */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         <textarea
+          ref={textareaRef}
           value={chapter.content}
           onChange={(e) => onChange(e.target.value)}
           className={`w-full h-full bg-transparent font-serif text-gray-300 leading-loose resize-none border-none focus:ring-0 outline-none placeholder-gray-700 custom-scrollbar px-6 py-4 ${getFontSizeClass()}`}
@@ -60,6 +74,24 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onChange, onTitleChange
           spellCheck={false}
           style={{ lineHeight: '2' }}
         />
+
+        {/* Scroll Navigation Buttons */}
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
+          <button
+            onClick={scrollToTop}
+            className="p-2 bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white rounded-full transition-all shadow-lg backdrop-blur-sm border border-gray-700/50"
+            title="跳到顶部"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </button>
+          <button
+            onClick={scrollToBottom}
+            className="p-2 bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white rounded-full transition-all shadow-lg backdrop-blur-sm border border-gray-700/50"
+            title="跳到底部"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );

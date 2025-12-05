@@ -1,7 +1,6 @@
-
 import React from 'react';
-import { Book, FileText, BookOpen, Settings, Library, Database, ChevronLeft, LayoutDashboard, Trash2 } from 'lucide-react';
-import { Book as BookType } from '../types';
+import { Book, FileText, BookOpen, Settings, Database, ChevronLeft, Trash2, User, Globe, BookMarked } from 'lucide-react';
+import { Book as BookType, EntityType } from '../types';
 
 interface SidebarProps {
   book: BookType;
@@ -13,7 +12,16 @@ interface SidebarProps {
   onSelectView: (view: 'editor' | 'wiki') => void;
   onBackToShelf: () => void;
   onOpenSettings: () => void;
+  // New props for wiki type selection
+  selectedEntityType?: EntityType;
+  onSelectEntityType?: (type: EntityType) => void;
 }
+
+const ENTITY_TYPES = [
+  { type: EntityType.CHARACTER, label: '角色', icon: User, color: 'text-blue-400' },
+  { type: EntityType.WORLDVIEW, label: '世界观', icon: Globe, color: 'text-purple-400' },
+  { type: EntityType.PLOT, label: '剧情', icon: BookMarked, color: 'text-green-400' },
+];
 
 export const Sidebar: React.FC<SidebarProps> = ({
   book,
@@ -24,7 +32,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   onSelectView,
   onBackToShelf,
-  onOpenSettings
+  onOpenSettings,
+  selectedEntityType = EntityType.CHARACTER,
+  onSelectEntityType
 }) => {
   return (
     <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full shrink-0">
@@ -72,8 +82,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   onClick={() => onSelectChapter(chapter.id)}
                   className={`w-full text-left px-3 py-2 rounded flex items-center text-sm transition-colors ${activeChapterId === chapter.id
-                      ? 'bg-gray-800 text-white border-l-2 border-indigo-500'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    ? 'bg-gray-800 text-white border-l-2 border-indigo-500'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                     }`}
                 >
                   <FileText className={`w-4 h-4 mr-2 transition-opacity ${activeChapterId === chapter.id ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`} />
@@ -101,11 +111,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4 px-4 text-center">
-            <Database className="w-8 h-8 opacity-20" />
-            <p className="text-xs">
-              请在主视图管理<br />世界观与角色卡片
-            </p>
+          <div className="space-y-1">
+            <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              分类
+            </div>
+            {ENTITY_TYPES.map(({ type, label, icon: Icon, color }) => {
+              const count = book.entities.filter(e => e.type === type).length;
+              return (
+                <button
+                  key={type}
+                  onClick={() => onSelectEntityType?.(type)}
+                  className={`w-full text-left px-3 py-2.5 rounded flex items-center text-sm transition-colors ${selectedEntityType === type
+                    ? 'bg-gray-800 text-white border-l-2 border-indigo-500'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    }`}
+                >
+                  <Icon className={`w-4 h-4 mr-2 ${color}`} />
+                  <span className="flex-1">{label}</span>
+                  <span className="text-xs bg-gray-700/50 px-1.5 py-0.5 rounded text-gray-500">{count}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

@@ -138,7 +138,7 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
 
                 {/* Header */}
@@ -243,12 +243,24 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
                                 const linkType = getLinkType(chapter.id);
                                 const globalIndex = startIndex + index + 1;
 
+                                // Handle row click - toggle with content as default
+                                const handleRowClick = () => {
+                                    if (linkType) {
+                                        // If already linked, unlink
+                                        setLocalLinks(localLinks.filter(l => l.chapterId !== chapter.id));
+                                    } else if (chapter.content) {
+                                        // Add with content type as default
+                                        setLocalLinks([...localLinks, { chapterId: chapter.id, type: 'content' }]);
+                                    }
+                                };
+
                                 return (
                                     <div
                                         key={chapter.id}
-                                        className={`p-4 rounded-lg border transition-all ${linkType
-                                            ? 'bg-indigo-900/20 border-indigo-500/50'
-                                            : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                                        onClick={handleRowClick}
+                                        className={`p-4 rounded-lg border transition-all cursor-pointer ${linkType
+                                            ? 'bg-indigo-900/20 border-indigo-500/50 ring-1 ring-indigo-500/30'
+                                            : 'bg-gray-800/50 border-gray-700 hover:border-gray-500 hover:bg-gray-800'
                                             }`}
                                     >
                                         <div className="flex items-start gap-3">
@@ -266,9 +278,6 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
 
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded">
-                                                        第 {globalIndex} 章
-                                                    </span>
                                                     <h3 className="text-sm font-medium text-gray-200 truncate">
                                                         {chapter.title || '未命名章节'}
                                                     </h3>
@@ -287,7 +296,7 @@ export const ChapterLinkModal: React.FC<ChapterLinkModalProps> = ({
                                                 )}
                                             </div>
 
-                                            <div className="flex gap-2 shrink-0">
+                                            <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                                                 <button
                                                     onClick={() => toggleLink(chapter.id, 'content')}
                                                     disabled={!chapter.content}

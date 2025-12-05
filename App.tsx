@@ -301,6 +301,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'editor' | 'wiki'>('editor');
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const [chapterLinks, setChapterLinks] = useState<ChapterLink[]>([]);
+  const [selectedEntityType, setSelectedEntityType] = useState<EntityType>(EntityType.CHARACTER);
 
   // Chat State
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -658,6 +659,8 @@ const App: React.FC = () => {
             onSelectView={setActiveView}
             onBackToShelf={() => setActiveBookId(null)}
             onOpenSettings={() => setShowSettings(true)}
+            selectedEntityType={selectedEntityType}
+            onSelectEntityType={setSelectedEntityType}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden relative">
@@ -672,6 +675,22 @@ const App: React.FC = () => {
                 onOpenAI={() => setShowAIAssistant(true)}
                 onOpenSummary={() => setShowSummaryModal(true)}
                 chapterTitle={activeChapter.title}
+                onAutoFormat={() => {
+                  // Auto-format: normalize spacing, paragraphs, etc.
+                  const content = activeChapter.content;
+                  const formatted = content
+                    // Remove multiple consecutive empty lines
+                    .replace(/\n{3,}/g, '\n\n')
+                    // Add space after Chinese punctuation if followed by text
+                    .replace(/([。！？；：」』】）"'])\s*(?=\S)/g, '$1\n\n')
+                    // Trim each line
+                    .split('\n')
+                    .map(line => line.trim())
+                    .join('\n')
+                    // Remove leading/trailing whitespace
+                    .trim();
+                  handleUpdateChapterContent(formatted);
+                }}
               />
               <div className="flex-1 overflow-hidden relative">
                 <Editor
@@ -702,6 +721,7 @@ const App: React.FC = () => {
               onDeleteEntity={handleDeleteEntity}
               onGenerateWorldview={handleGenerateWorldview}
               isGenerating={isGenerating}
+              selectedType={selectedEntityType}
             />
           )}
         </main>
@@ -722,6 +742,12 @@ const App: React.FC = () => {
           prompts={prompts}
           models={settings.models || []}
           defaultModelId={settings.defaultModelId}
+          onInsertToChapter={(content) => {
+            // Insert AI generated content at the end of the chapter
+            const currentContent = activeChapter?.content || '';
+            const newContent = currentContent + (currentContent ? '\n\n' : '') + content;
+            handleUpdateChapterContent(newContent);
+          }}
         />
       </div>
     );
@@ -774,7 +800,7 @@ const App: React.FC = () => {
           <button onClick={() => setShowSettings(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="全局设置">
             <Settings className="w-5 h-5" />
           </button>
-          <button onClick={() => setShowAILogs(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="AI 生成记录">
+          <button onClick={() => setShowAILogs(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="历史记录">
             <History className="w-5 h-5" />
           </button>
         </div>
