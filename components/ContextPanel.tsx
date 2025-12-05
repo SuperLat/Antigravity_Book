@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X, Link } from 'lucide-react';
-import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter } from '../types';
+import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter, ModelConfig } from '../types';
 import { ChapterLinkModal, ChapterLink } from './ChapterLinkModal';
 
 interface ContextPanelProps {
@@ -12,10 +12,12 @@ interface ContextPanelProps {
   activeChapterId?: string;
   chapterLinks?: ChapterLink[];
   onUpdateChapterLinks?: (links: ChapterLink[]) => void;
-  onGenerate: (prompt: string) => Promise<void>;
+  onGenerate: (prompt: string, modelId?: string) => Promise<void>;
   isGenerating: boolean;
   chatHistory: ChatMessage[];
   prompts: PromptTemplate[];
+  models: ModelConfig[];
+  defaultModelId?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -29,14 +31,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   general: '通用',
 };
 
-const RECOMMENDED_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-2.0-flash-thinking-exp-01-21",
-  "gpt-4o",
-  "deepseek-chat",
-];
-
 export const ContextPanel: React.FC<ContextPanelProps> = ({
   entities,
   selectedEntityIds,
@@ -48,7 +42,9 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   onGenerate,
   isGenerating,
   chatHistory,
-  prompts
+  prompts,
+  models,
+  defaultModelId
 }) => {
   const [activeTab, setActiveTab] = useState<'context' | 'chat'>('context');
   const [promptInput, setPromptInput] = useState('');
@@ -58,7 +54,14 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   // Model Selection State
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>(defaultModelId || (models[0]?.id || ''));
+
+  // Update selected model if default changes
+  useEffect(() => {
+    if (defaultModelId) {
+      setSelectedModel(defaultModelId);
+    }
+  }, [defaultModelId]);
 
   // Chapter Link Modal State
   const [showChapterLinkModal, setShowChapterLinkModal] = useState(false);
@@ -106,7 +109,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
       }
     }
 
-    onGenerate(finalPrompt);
+    onGenerate(finalPrompt, selectedModel);
     setPromptInput('');
     // NOTE: selectedTemplateId is purposely NOT reset here, allowing continuous use of the same "mode"
     setActiveTab('chat');
@@ -125,9 +128,6 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
   return (
     <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col h-full shadow-xl z-10">
-      <datalist id="context-models">
-        {RECOMMENDED_MODELS.map(m => <option key={m} value={m} />)}
-      </datalist>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-800">
@@ -346,14 +346,16 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
                 <div className="relative flex-1">
                   <Cpu className="w-3 h-3 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    list="context-models"
+                  <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-6 pr-2 w-full focus:outline-none focus:border-indigo-500 truncate"
-                    placeholder="Model..."
-                    title={`Model: ${selectedModel}`}
-                  />
+                    className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-6 pr-2 focus:outline-none focus:border-indigo-500 truncate"
+                  >
+                    {models.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 

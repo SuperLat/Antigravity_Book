@@ -19,6 +19,7 @@ app.use('/api/books', require('./routes/books'));
 app.use('/api/prompts', require('./routes/prompts'));
 app.use('/api/ideas', require('./routes/ideas'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/ai-logs', require('./routes/aiLogs'));
 
 // Health check
 app.get('/api/health', (req, res) => {

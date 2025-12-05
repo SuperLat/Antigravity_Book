@@ -97,3 +97,15 @@ export const settingsAPI = {
         body: JSON.stringify(settings),
     }),
 };
+
+// AI Logs API
+export const aiLogsAPI = {
+    getAll: (page = 1, limit = 20, filters?: any) => {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString(), ...filters });
+        return fetchAPI<any>(`/ai-logs?${params.toString()}`);
+    },
+    save: (log: any) => fetchAPI<any>('/ai-logs', {
+        method: 'POST',
+        body: JSON.stringify(log),
+    }),
+};

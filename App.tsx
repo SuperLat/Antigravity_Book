@@ -10,11 +10,12 @@ import { SettingsModal } from './components/SettingsModal';
 import { ChapterSummaryModal } from './components/ChapterSummaryModal';
 import { AuthPage } from './components/AuthPage';
 import { UserProfileModal } from './components/UserProfileModal';
+import { AILogViewer } from './components/AILogViewer';
 import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary } from './services/geminiService';
-import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI } from './services/api';
+import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI, aiLogsAPI } from './services/api';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
 import { ChapterLink } from './components/ChapterLinkModal';
-import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User } from 'lucide-react';
+import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User, History } from 'lucide-react';
 
 // --- MOCK DATA ---
 const MOCK_ENTITIES_BOOK1: Entity[] = [
@@ -152,6 +153,7 @@ const App: React.FC = () => {
   const [dashboardTab, setDashboardTab] = useState<'bookshelf' | 'idealab' | 'prompt_manager'>('bookshelf');
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAILogs, setShowAILogs] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -329,6 +331,12 @@ const App: React.FC = () => {
       entities: []
     };
     setBooks(prev => [...prev, newBook]);
+    booksAPI.save(newBook).catch(err => console.error("Failed to create book", err));
+  };
+
+  const handleUpdateBook = (updatedBook: Book) => {
+    setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+    booksAPI.save(updatedBook).catch(err => console.error("Failed to save book update", err));
   };
 
   const handleDeleteBook = (id: string) => {
@@ -474,7 +482,19 @@ const App: React.FC = () => {
     if (!selectedModel) {
       throw new Error('选择的模型不存在');
     }
-    return await generateChapterSummary(selectedModel, chapterContent, promptTemplate);
+    const summary = await generateChapterSummary(selectedModel, chapterContent, promptTemplate);
+
+    // Log to AI Logs
+    aiLogsAPI.save({
+      actionType: 'summary',
+      category: 'summary',
+      prompt: `Template: ${promptTemplate || 'Default'}\nContent Length: ${chapterContent.length}`,
+      response: summary,
+      modelName: selectedModel.modelName,
+      bookId: activeBook?.id
+    }).catch(console.error);
+
+    return summary;
   };
 
   const handleSaveSummary = (summary: string) => {
@@ -485,7 +505,7 @@ const App: React.FC = () => {
   };
 
   // --- AI Handlers ---
-  const handleGenerate = async (prompt: string) => {
+  const handleGenerate = async (prompt: string, modelId?: string) => {
     if (isGenerating || !activeBook || !activeChapter) return;
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: prompt, timestamp: Date.now() };
     setChatHistory(prev => [...prev, userMsg]);
@@ -506,20 +526,35 @@ const App: React.FC = () => {
         return chapter;
       }).filter(Boolean) as Chapter[];
 
-      // Get the default model or first available model
-      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
-      if (!defaultModel) {
+      // Get model: specified > default > first
+      let modelConfig = modelId ? settings.models?.find(m => m.id === modelId) : undefined;
+      if (!modelConfig) {
+        modelConfig = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      }
+
+      if (!modelConfig) {
         throw new Error('没有配置模型,请在设置中添加模型。');
       }
 
       const responseText = await generateNovelContent({
-        modelConfig: defaultModel,
+        modelConfig: modelConfig,
         userPrompt: prompt,
         selectedEntities,
         selectedChapters,
         activeChapter,
         previousChapterSummary: "（暂无前情提要）"
       });
+
+      // Log to AI Logs
+      aiLogsAPI.save({
+        actionType: 'chat',
+        category: 'chat',
+        prompt: prompt,
+        response: responseText,
+        modelName: modelConfig.modelName,
+        bookId: activeBook.id
+      }).catch(console.error);
+
       const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: responseText, timestamp: Date.now() };
       setChatHistory(prev => [...prev, aiMsg]);
     } catch (error) {
@@ -538,6 +573,17 @@ const App: React.FC = () => {
         throw new Error('没有配置模型');
       }
       const result = await generateWorldviewFromIdea(defaultModel, idea.content);
+
+      // Log to AI Logs
+      aiLogsAPI.save({
+        actionType: 'worldview',
+        category: 'worldview',
+        prompt: `Idea: ${idea.name}\nContent: ${idea.content}`,
+        response: result,
+        modelName: defaultModel.modelName,
+        bookId: undefined
+      }).catch(console.error);
+
       const newWorldview: Entity = {
         id: Date.now().toString(),
         type: EntityType.WORLDVIEW,
@@ -637,6 +683,8 @@ const App: React.FC = () => {
                   isGenerating={isGenerating}
                   chatHistory={chatHistory}
                   prompts={prompts}
+                  models={settings.models || []}
+                  defaultModelId={settings.defaultModelId}
                 />
               )}
               <ChapterSummaryModal
@@ -712,6 +760,9 @@ const App: React.FC = () => {
           <button onClick={() => setShowSettings(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="全局设置">
             <Settings className="w-5 h-5" />
           </button>
+          <button onClick={() => setShowAILogs(true)} className="p-2 text-gray-500 hover:text-white transition-colors" title="AI 生成记录">
+            <History className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -728,6 +779,7 @@ const App: React.FC = () => {
             books={books}
             onSelectBook={handleSelectBook}
             onCreateBook={handleCreateBook}
+            onUpdateBook={handleUpdateBook}
             onDeleteBook={handleDeleteBook}
             onImportBook={handleImportBook}
           />
@@ -752,6 +804,10 @@ const App: React.FC = () => {
           />
         )}
       </div>
+      <AILogViewer
+        isOpen={showAILogs}
+        onClose={() => setShowAILogs(false)}
+      />
     </div>
   );
 };
