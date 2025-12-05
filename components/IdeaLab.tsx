@@ -15,11 +15,7 @@ interface IdeaLabProps {
 }
 
 const RECOMMENDED_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-2.0-flash-thinking-exp-01-21",
-  "gpt-4o",
-  "deepseek-chat",
+
 ];
 
 export const IdeaLab: React.FC<IdeaLabProps> = ({

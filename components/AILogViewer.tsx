@@ -105,8 +105,8 @@ export const AILogViewer: React.FC<AILogViewerProps> = ({ isOpen, onClose }) => 
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center gap-2">
                                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${log.actionType === 'chat' ? 'bg-blue-900/30 text-blue-400' :
-                                                log.actionType === 'summary' ? 'bg-green-900/30 text-green-400' :
-                                                    'bg-purple-900/30 text-purple-400'
+                                            log.actionType === 'summary' ? 'bg-green-900/30 text-green-400' :
+                                                'bg-purple-900/30 text-purple-400'
                                             }`}>
                                             {log.actionType === 'chat' ? '对话' : log.actionType === 'summary' ? '摘要' : '世界观'}
                                         </span>
@@ -126,18 +126,10 @@ export const AILogViewer: React.FC<AILogViewerProps> = ({ isOpen, onClose }) => 
                                     )}
                                 </div>
 
-                                <div className="space-y-3">
-                                    <div>
-                                        <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Prompt</div>
-                                        <div className="bg-gray-900 rounded p-3 text-sm text-gray-300 whitespace-pre-wrap max-h-32 overflow-y-auto custom-scrollbar border border-gray-800">
-                                            {log.prompt}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider">Response</div>
-                                        <div className="bg-gray-900 rounded p-3 text-sm text-gray-200 whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar border border-gray-800">
-                                            {log.response}
-                                        </div>
+                                <div>
+                                    <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider">生成内容</div>
+                                    <div className="bg-gray-900 rounded p-3 text-sm text-gray-200 whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar border border-gray-800">
+                                        {log.response}
                                     </div>
                                 </div>
                             </div>

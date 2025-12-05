@@ -12,7 +12,7 @@ interface SettingsModalProps {
 }
 
 const RECOMMENDED_MODELS = [
-  "gemini-2.5-flash",
+
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {

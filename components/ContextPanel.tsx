@@ -12,7 +12,7 @@ interface ContextPanelProps {
   activeChapterId?: string;
   chapterLinks?: ChapterLink[];
   onUpdateChapterLinks?: (links: ChapterLink[]) => void;
-  onGenerate: (prompt: string, modelId?: string) => Promise<void>;
+  onGenerate: (prompt: string, modelId?: string, category?: string) => Promise<void>;
   isGenerating: boolean;
   chatHistory: ChatMessage[];
   prompts: PromptTemplate[];
@@ -109,7 +109,13 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
       }
     }
 
-    onGenerate(finalPrompt, selectedModel);
+    // Determine category
+    let category = selectedCategory;
+    if (!category && activeTemplate) {
+      category = activeTemplate.category;
+    }
+
+    onGenerate(finalPrompt, selectedModel, category || undefined);
     setPromptInput('');
     // NOTE: selectedTemplateId is purposely NOT reset here, allowing continuous use of the same "mode"
     setActiveTab('chat');

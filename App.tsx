@@ -11,6 +11,8 @@ import { ChapterSummaryModal } from './components/ChapterSummaryModal';
 import { AuthPage } from './components/AuthPage';
 import { UserProfileModal } from './components/UserProfileModal';
 import { AILogViewer } from './components/AILogViewer';
+import { EditorToolbar } from './components/EditorToolbar';
+import { AIAssistantModal } from './components/AIAssistantModal';
 import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary } from './services/geminiService';
 import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI, aiLogsAPI } from './services/api';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
@@ -154,6 +156,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showAILogs, setShowAILogs] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -505,7 +508,7 @@ const App: React.FC = () => {
   };
 
   // --- AI Handlers ---
-  const handleGenerate = async (prompt: string, modelId?: string) => {
+  const handleGenerate = async (prompt: string, modelId?: string, category?: string) => {
     if (isGenerating || !activeBook || !activeChapter) return;
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: prompt, timestamp: Date.now() };
     setChatHistory(prev => [...prev, userMsg]);
@@ -545,15 +548,17 @@ const App: React.FC = () => {
         previousChapterSummary: "（暂无前情提要）"
       });
 
-      // Log to AI Logs
-      aiLogsAPI.save({
-        actionType: 'chat',
-        category: 'chat',
-        prompt: prompt,
-        response: responseText,
-        modelName: modelConfig.modelName,
-        bookId: activeBook.id
-      }).catch(console.error);
+      // Log to AI Logs ONLY if category is present
+      if (category) {
+        aiLogsAPI.save({
+          actionType: 'generate',
+          category: category,
+          prompt: prompt,
+          response: responseText,
+          modelName: modelConfig.modelName,
+          bookId: activeBook.id
+        }).catch(console.error);
+      }
 
       const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: responseText, timestamp: Date.now() };
       setChatHistory(prev => [...prev, aiMsg]);
@@ -655,7 +660,7 @@ const App: React.FC = () => {
             onOpenSettings={() => setShowSettings(true)}
           />
         )}
-        <main className="flex-1 flex overflow-hidden relative">
+        <main className="flex-1 flex flex-col overflow-hidden relative">
           {settings.appearance.immersiveMode && (
             <button onClick={() => handleSaveSettings({ ...settings, appearance: { ...settings.appearance, immersiveMode: false } })} className="absolute top-4 right-8 z-50 bg-gray-900/50 p-2 rounded-full backdrop-blur-sm hover:text-indigo-400">
               <Minimize2 className="w-5 h-5" />
@@ -663,30 +668,21 @@ const App: React.FC = () => {
           )}
           {activeView === 'editor' && activeChapter ? (
             <>
-              <Editor
-                chapter={activeChapter}
-                onChange={handleUpdateChapterContent}
-                onTitleChange={handleUpdateChapterTitle}
+              <EditorToolbar
+                onOpenAI={() => setShowAIAssistant(true)}
                 onOpenSummary={() => setShowSummaryModal(true)}
-                fontSize={settings.appearance.fontSize}
+                chapterTitle={activeChapter.title}
               />
-              {!settings.appearance.immersiveMode && (
-                <ContextPanel
-                  entities={activeBook.entities}
-                  selectedEntityIds={selectedEntityIds}
-                  onToggleEntity={(id) => setSelectedEntityIds(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id])}
-                  chapters={activeBook.chapters}
-                  activeChapterId={activeChapterId}
-                  chapterLinks={chapterLinks}
-                  onUpdateChapterLinks={setChapterLinks}
-                  onGenerate={handleGenerate}
-                  isGenerating={isGenerating}
-                  chatHistory={chatHistory}
-                  prompts={prompts}
-                  models={settings.models || []}
-                  defaultModelId={settings.defaultModelId}
+              <div className="flex-1 overflow-hidden relative">
+                <Editor
+                  chapter={activeChapter}
+                  onChange={handleUpdateChapterContent}
+                  onTitleChange={handleUpdateChapterTitle}
+                  onOpenSummary={() => setShowSummaryModal(true)}
+                  fontSize={settings.appearance.fontSize}
                 />
-              )}
+              </div>
+
               <ChapterSummaryModal
                 isOpen={showSummaryModal}
                 onClose={() => setShowSummaryModal(false)}
@@ -709,6 +705,24 @@ const App: React.FC = () => {
             />
           )}
         </main>
+
+        <AIAssistantModal
+          isOpen={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+          entities={activeBook.entities}
+          selectedEntityIds={selectedEntityIds}
+          onToggleEntity={(id) => setSelectedEntityIds(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id])}
+          chapters={activeBook.chapters}
+          activeChapterId={activeChapterId}
+          chapterLinks={chapterLinks}
+          onUpdateChapterLinks={setChapterLinks}
+          onGenerate={handleGenerate}
+          isGenerating={isGenerating}
+          chatHistory={chatHistory}
+          prompts={prompts}
+          models={settings.models || []}
+          defaultModelId={settings.defaultModelId}
+        />
       </div>
     );
   }
@@ -808,6 +822,26 @@ const App: React.FC = () => {
         isOpen={showAILogs}
         onClose={() => setShowAILogs(false)}
       />
+
+      {activeBook && activeChapter && (
+        <AIAssistantModal
+          isOpen={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+          entities={activeBook.entities}
+          selectedEntityIds={selectedEntityIds}
+          onToggleEntity={(id) => setSelectedEntityIds(p => p.includes(id) ? p.filter(e => e !== id) : [...p, id])}
+          chapters={activeBook.chapters}
+          activeChapterId={activeChapterId}
+          chapterLinks={chapterLinks}
+          onUpdateChapterLinks={setChapterLinks}
+          onGenerate={handleGenerate}
+          isGenerating={isGenerating}
+          chatHistory={chatHistory}
+          prompts={prompts}
+          models={settings.models || []}
+          defaultModelId={settings.defaultModelId}
+        />
+      )}
     </div>
   );
 };
