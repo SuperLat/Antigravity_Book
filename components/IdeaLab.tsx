@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate } from '../types';
-import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, Cpu } from 'lucide-react';
-import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline } from '../services/geminiService';
+import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit } from '../types';
+import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, Cpu, History, Clock } from 'lucide-react';
+import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent } from '../services/geminiService';
 
 interface IdeaLabProps {
   ideas: IdeaProject[];
@@ -171,6 +171,59 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const result = await generateChapterBeatsFromOutline(tempConfig, activeIdea.outline, customTemplate);
       onUpdateIdea(activeIdea.id, { chapterBeats: result });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // New: Volume-based beats splitting
+  const [volumeContent, setVolumeContent] = useState('');
+  const [splitChapterCount, setSplitChapterCount] = useState(4);
+  const [showSplitHistory, setShowSplitHistory] = useState(false);
+  const [currentSplit, setCurrentSplit] = useState<BeatsSplit | null>(null);
+
+  const handleSplitVolume = async () => {
+    if (!activeIdea || isGenerating || !volumeContent.trim()) return;
+    setIsGenerating(true);
+    try {
+      const customTemplate = beatsPromptId !== 'default' ? prompts.find(p => p.id === beatsPromptId)?.template : undefined;
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.beats };
+
+      // Calculate start chapter from last split
+      const startChapter = (activeIdea.lastSplitChapterNum || 0) + 1;
+
+      const result = await generateBeatsFromVolumeContent(
+        tempConfig,
+        volumeContent,
+        splitChapterCount,
+        startChapter,
+        customTemplate
+      );
+
+      // Create new split record
+      const newSplit: BeatsSplit = {
+        id: Date.now().toString(),
+        volumeContent,
+        chapterCount: splitChapterCount,
+        startChapter,
+        beats: result,
+        createdAt: Date.now()
+      };
+
+      // Update idea with new split and history
+      const existingHistory = activeIdea.beatsSplitHistory || [];
+      onUpdateIdea(activeIdea.id, {
+        beatsSplitHistory: [...existingHistory, newSplit],
+        lastSplitChapterNum: startChapter + splitChapterCount - 1,
+        chapterBeats: [...(activeIdea.chapterBeats || []), ...result]
+      });
+
+      setCurrentSplit(newSplit);
+      setVolumeContent('');
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -453,66 +506,166 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     />
                   </div>
 
-                  {/* Chapter Beats */}
-                  <div>
-                    <div className="flex justify-between items-center mb-4 border-t border-gray-800 pt-8">
-                      <h3 className="text-lg font-bold text-green-400 flex items-center">
-                        <FileText className="w-5 h-5 mr-2" /> 章节细纲 (第一卷)
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <div className="relative">
-                          <select
-                            value={beatsPromptId}
-                            onChange={(e) => setBeatsPromptId(e.target.value)}
-                            className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1.5 pl-3 pr-8 rounded text-xs focus:outline-none focus:border-green-500"
-                          >
-                            <option value="default">默认拆分逻辑</option>
-                            {beatsPrompts.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  {/* Chapter Beats - Volume Split */}
+                  <div className="border-t border-gray-800 pt-8">
+                    <h3 className="text-lg font-bold text-green-400 flex items-center mb-6">
+                      <FileText className="w-5 h-5 mr-2" /> 章节细纲拆分
+                    </h3>
+
+                    {/* Volume Input Section */}
+                    <div className="bg-green-900/10 border border-green-500/30 p-6 rounded-lg mb-6">
+                      <div className="flex justify-between items-center mb-4">
+                        <label className="text-sm font-medium text-green-300">输入卷大纲内容</label>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">拆分章数：</span>
+                            <select
+                              value={splitChapterCount}
+                              onChange={(e) => setSplitChapterCount(Number(e.target.value))}
+                              className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-green-500"
+                            >
+                              {[2, 3, 4, 5, 6, 7, 8, 10].map(n => (
+                                <option key={n} value={n}>{n} 章</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            下次从第 {(activeIdea.lastSplitChapterNum || 0) + 1} 章开始
+                          </div>
                         </div>
-
-                        <ModelSelector stage="beats" />
-
+                      </div>
+                      <textarea
+                        value={volumeContent}
+                        onChange={(e) => setVolumeContent(e.target.value)}
+                        className="w-full h-32 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-green-500 outline-none resize-none mb-4"
+                        placeholder="粘贴或输入本卷的大纲内容，AI 将根据内容拆分为指定数量的章节细纲..."
+                      />
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <select
+                              value={beatsPromptId}
+                              onChange={(e) => setBeatsPromptId(e.target.value)}
+                              className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1.5 pl-3 pr-8 rounded text-xs focus:outline-none focus:border-green-500"
+                            >
+                              <option value="default">默认拆分逻辑</option>
+                              {beatsPrompts.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                            <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
+                          <ModelSelector stage="beats" />
+                        </div>
                         <button
-                          onClick={handleGenerateBeats}
-                          disabled={!activeIdea.outline || isGenerating}
-                          className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-green-400 rounded text-xs flex items-center border border-gray-700"
+                          onClick={handleSplitVolume}
+                          disabled={!volumeContent.trim() || isGenerating}
+                          className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm flex items-center disabled:opacity-50 transition-colors"
                         >
-                          {isGenerating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Wand2 className="w-3 h-3 mr-1" />}
-                          拆分章节
+                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                          拆分 {splitChapterCount} 章
                         </button>
                       </div>
                     </div>
 
-                    {(!activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0) ? (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
-                        生成大纲后，点击上方按钮拆分章节细纲
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {activeIdea.chapterBeats.map((beat, idx) => (
-                          <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-bold text-white">{beat.chapterTitle}</h4>
-                              <span className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Chapter {idx + 1}</span>
-                            </div>
-                            <p className="text-sm text-gray-400 mb-3">{beat.summary}</p>
-                            <div className="flex gap-2 text-xs">
-                              <div className="bg-red-900/30 text-red-300 px-2 py-1 rounded border border-red-500/20">
-                                冲突: {beat.conflict}
-                              </div>
-                              {beat.keyCharacters.map(char => (
-                                <div key={char} className="bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-500/20">
-                                  {char}
-                                </div>
-                              ))}
-                            </div>
+                    {/* Tabs: Current Split / History */}
+                    <div className="flex border-b border-gray-800 mb-4">
+                      <button
+                        onClick={() => setShowSplitHistory(false)}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${!showSplitHistory
+                          ? 'border-green-500 text-green-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-300'
+                          }`}
+                      >
+                        <FileText className="w-4 h-4 inline mr-1" />
+                        本次拆分 {currentSplit && `(${currentSplit.beats.length}章)`}
+                      </button>
+                      <button
+                        onClick={() => setShowSplitHistory(true)}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${showSplitHistory
+                          ? 'border-green-500 text-green-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-300'
+                          }`}
+                      >
+                        <History className="w-4 h-4 inline mr-1" />
+                        历史拆分 ({activeIdea.beatsSplitHistory?.length || 0})
+                      </button>
+                    </div>
+
+                    {/* Content */}
+                    {!showSplitHistory ? (
+                      // Current Split
+                      currentSplit ? (
+                        <div className="space-y-4">
+                          <div className="text-xs text-gray-500 mb-2">
+                            第 {currentSplit.startChapter} - {currentSplit.startChapter + currentSplit.beats.length - 1} 章
                           </div>
-                        ))}
-                      </div>
+                          {currentSplit.beats.map((beat, idx) => (
+                            <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
+                              <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-white">{beat.chapterTitle}</h4>
+                                <span className="text-xs bg-green-900/30 px-2 py-1 rounded text-green-400">
+                                  第 {currentSplit.startChapter + idx} 章
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-400 mb-3">{beat.summary}</p>
+                              <div className="flex gap-2 text-xs flex-wrap">
+                                <div className="bg-red-900/30 text-red-300 px-2 py-1 rounded border border-red-500/20">
+                                  冲突: {beat.conflict}
+                                </div>
+                                {beat.keyCharacters.map(char => (
+                                  <div key={char} className="bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-500/20">
+                                    {char}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
+                          输入卷大纲内容后点击"拆分"按钮生成章节细纲
+                        </div>
+                      )
+                    ) : (
+                      // History
+                      activeIdea.beatsSplitHistory && activeIdea.beatsSplitHistory.length > 0 ? (
+                        <div className="space-y-6">
+                          {activeIdea.beatsSplitHistory.map((split, splitIdx) => (
+                            <div key={split.id} className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
+                              <div className="bg-gray-800/50 px-4 py-3 flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-medium text-gray-300">
+                                    第 {split.startChapter} - {split.startChapter + split.beats.length - 1} 章
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    ({split.beats.length} 章)
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(split.createdAt).toLocaleString()}
+                                </div>
+                              </div>
+                              <div className="p-4 space-y-3">
+                                {split.beats.map((beat, idx) => (
+                                  <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                                    <div className="flex justify-between items-start mb-1">
+                                      <h4 className="font-medium text-white text-sm">{beat.chapterTitle}</h4>
+                                      <span className="text-xs text-gray-500">第 {split.startChapter + idx} 章</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400">{beat.summary}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
+                          暂无历史拆分记录
+                        </div>
+                      )
                     )}
                   </div>
                 </div>

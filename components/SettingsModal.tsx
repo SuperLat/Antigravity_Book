@@ -406,6 +406,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                     </h3>
 
                     <div className="space-y-6">
+                      {/* Theme Toggle */}
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-3">界面主题</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => updateAppearance({ theme: 'dark' })}
+                            className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm transition-all ${localSettings.appearance.theme === 'dark'
+                              ? 'bg-indigo-600 text-white border-indigo-500'
+                              : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-750'
+                              }`}
+                          >
+                            <span className="w-5 h-5 rounded-full bg-gray-900 border border-gray-600"></span>
+                            黑夜模式
+                          </button>
+                          <button
+                            onClick={() => updateAppearance({ theme: 'light' })}
+                            className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm transition-all ${localSettings.appearance.theme === 'light'
+                              ? 'bg-indigo-600 text-white border-indigo-500'
+                              : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-750'
+                              }`}
+                          >
+                            <span className="w-5 h-5 rounded-full bg-white border border-gray-300"></span>
+                            白天模式
+                          </button>
+                        </div>
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-gray-200 font-medium">沉浸式写作模式</div>

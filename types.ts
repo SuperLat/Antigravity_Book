@@ -61,13 +61,25 @@ export interface ChapterBeat {
   conflict: string;
 }
 
+// 细纲拆分记录
+export interface BeatsSplit {
+  id: string;
+  volumeContent: string; // 卷内容
+  chapterCount: number; // 拆分章数
+  startChapter: number; // 起始章节号
+  beats: ChapterBeat[]; // 拆分结果
+  createdAt: number;
+}
+
 export interface IdeaProject {
   id: string;
   title: string;
   spark: string; // Stage 1: The core idea/trope
   worldview: string; // Stage 2: Generated world setting
   outline: string; // Stage 3a: Macro outline
-  chapterBeats: ChapterBeat[]; // Stage 3b: Structured chapter plan
+  chapterBeats: ChapterBeat[]; // Stage 3b: Structured chapter plan (legacy/current)
+  beatsSplitHistory?: BeatsSplit[]; // 拆分历史记录
+  lastSplitChapterNum?: number; // 上次拆分到的章节号
   updatedAt: number;
 }
 

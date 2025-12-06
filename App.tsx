@@ -296,6 +296,19 @@ const App: React.FC = () => {
     }
   };
 
+  // Apply theme to document
+  useEffect(() => {
+    const theme = settings.appearance?.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'light') {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    }
+  }, [settings.appearance?.theme]);
+
   // Active Book State
   const [activeChapterId, setActiveChapterId] = useState<string>('');
   const [activeView, setActiveView] = useState<'editor' | 'wiki'>('editor');

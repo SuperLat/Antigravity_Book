@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
 
 <head>
   <meta charset="UTF-8" />
@@ -11,6 +11,7 @@
     rel="stylesheet">
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
@@ -29,23 +30,92 @@
     }
   </script>
   <style>
-    /* Custom scrollbar for webkit */
-    ::-webkit-scrollbar {
+    /* Dark mode (default) */
+    :root, .dark {
+      --bg-primary: #0d1117;
+      --bg-secondary: #111827;
+      --bg-tertiary: #1f2937;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --border-color: #374151;
+    }
+    
+    /* Light mode */
+    .light {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f9fafb;
+      --bg-tertiary: #f3f4f6;
+      --text-primary: #111827;
+      --text-secondary: #6b7280;
+      --border-color: #e5e7eb;
+    }
+
+    /* Apply light mode overrides */
+    .light .bg-gray-950 { background-color: #ffffff !important; }
+    .light .bg-gray-900 { background-color: #f9fafb !important; }
+    .light .bg-gray-900\/50 { background-color: rgba(249, 250, 251, 0.5) !important; }
+    .light .bg-gray-900\/30 { background-color: rgba(249, 250, 251, 0.3) !important; }
+    .light .bg-gray-800 { background-color: #f3f4f6 !important; }
+    .light .bg-gray-800\/50 { background-color: rgba(243, 244, 246, 0.5) !important; }
+    .light .bg-gray-800\/30 { background-color: rgba(243, 244, 246, 0.3) !important; }
+    .light .bg-gray-700 { background-color: #e5e7eb !important; }
+    
+    .light .text-gray-100 { color: #111827 !important; }
+    .light .text-gray-200 { color: #1f2937 !important; }
+    .light .text-gray-300 { color: #374151 !important; }
+    .light .text-gray-400 { color: #6b7280 !important; }
+    .light .text-gray-500 { color: #9ca3af !important; }
+    .light .text-gray-600 { color: #d1d5db !important; }
+    .light .text-white { color: #111827 !important; }
+    
+    .light .border-gray-800 { border-color: #e5e7eb !important; }
+    .light .border-gray-800\/50 { border-color: rgba(229, 231, 235, 0.5) !important; }
+    .light .border-gray-700 { border-color: #d1d5db !important; }
+    .light .border-gray-700\/50 { border-color: rgba(209, 213, 219, 0.5) !important; }
+    
+    .light .hover\:bg-gray-800:hover { background-color: #e5e7eb !important; }
+    .light .hover\:bg-gray-700:hover { background-color: #d1d5db !important; }
+    .light .hover\:text-white:hover { color: #111827 !important; }
+    
+    .light .placeholder-gray-700::placeholder { color: #9ca3af !important; }
+    .light .placeholder-gray-600::placeholder { color: #9ca3af !important; }
+
+    /* Custom scrollbar for webkit - dark */
+    .dark ::-webkit-scrollbar {
       width: 8px;
       height: 8px;
     }
 
-    ::-webkit-scrollbar-track {
+    .dark ::-webkit-scrollbar-track {
       background: #1f2937;
     }
 
-    ::-webkit-scrollbar-thumb {
+    .dark ::-webkit-scrollbar-thumb {
       background: #4b5563;
       border-radius: 4px;
     }
 
-    ::-webkit-scrollbar-thumb:hover {
+    .dark ::-webkit-scrollbar-thumb:hover {
       background: #6b7280;
+    }
+
+    /* Custom scrollbar for webkit - light */
+    .light ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .light ::-webkit-scrollbar-track {
+      background: #f3f4f6;
+    }
+
+    .light ::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 4px;
+    }
+
+    .light ::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
     }
   </style>
   <script type="importmap">

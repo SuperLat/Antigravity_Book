@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat } from '../types';
+import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat, BeatsSplit } from '../types';
 
 // Default env key
 const DEFAULT_API_KEY = process.env.API_KEY || '';
@@ -476,6 +476,91 @@ export const generateChapterBeatsFromOutline = async (
         "conflict": "核心冲突点"
       }
     ]
+  `;
+
+  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。";
+
+  try {
+    let text = '';
+
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.6,
+          responseMimeType: "application/json"
+        }
+      }));
+      text = response.text || "[]";
+    } else {
+      const result = await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+      text = result;
+    }
+
+    // Clean up potential markdown code blocks
+    const jsonStr = text.replace(/```json\n?|\n?```/g, '');
+    return JSON.parse(jsonStr) as ChapterBeat[];
+  } catch (error) {
+    console.error("JSON Parse Error or AI Error", error);
+    throw new Error("生成细纲失败或格式解析错误。");
+  }
+};
+
+// 从卷内容拆分指定数量的章节细纲
+export const generateBeatsFromVolumeContent = async (
+  modelConfig: ModelConfig,
+  volumeContent: string,
+  chapterCount: number,
+  startChapter: number,
+  customTemplate?: string
+): Promise<ChapterBeat[]> => {
+  let promptContent = '';
+
+  if (customTemplate) {
+    promptContent = customTemplate
+      .replace(/{{volumeContent}}/g, volumeContent)
+      .replace(/{{input}}/g, volumeContent)
+      .replace(/{{chapterCount}}/g, String(chapterCount))
+      .replace(/{{startChapter}}/g, String(startChapter));
+  } else {
+    promptContent = `
+      【卷大纲内容】：
+      ${volumeContent}
+
+      请将以上内容拆分为 ${chapterCount} 个连续的章节细纲。
+      章节编号从第 ${startChapter} 章开始，到第 ${startChapter + chapterCount - 1} 章。
+      
+      要求：
+      1. 每个章节要有具体的情节推进
+      2. 章节之间要有连贯性
+      3. 包含核心冲突和关键角色
+    `;
+  }
+
+  const finalPrompt = `
+    ${promptContent}
+    
+    IMPORTANT:
+    请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
+    [
+      {
+        "chapterTitle": "第${startChapter}章：...",
+        "summary": "本章发生的具体事件摘要...",
+        "keyCharacters": ["主角名", "配角名"],
+        "conflict": "核心冲突点"
+      }
+    ]
+    
+    必须返回恰好 ${chapterCount} 个章节。
   `;
 
   const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。";
