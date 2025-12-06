@@ -71,13 +71,29 @@ export interface BeatsSplit {
   createdAt: number;
 }
 
+export interface Part {
+  id: string;
+  title: string;
+  summary: string;
+  order: number;
+}
+
+export interface Volume {
+  id: string;
+  title: string;
+  summary: string;
+  order: number;
+  parts?: Part[];
+}
+
 export interface IdeaProject {
   id: string;
   title: string;
   spark: string; // Stage 1: The core idea/trope
   worldview: string; // Stage 2: Generated world setting
   outline: string; // Stage 3a: Macro outline
-  chapterBeats: ChapterBeat[]; // Stage 3b: Structured chapter plan (legacy/current)
+  volumes?: Volume[]; // Stage 3b: Volume outlines
+  chapterBeats: ChapterBeat[]; // Stage 4: Structured chapter plan
   beatsSplitHistory?: BeatsSplit[]; // 拆分历史记录
   lastSplitChapterNum?: number; // 上次拆分到的章节号
   linkedBookId?: string; // Associated Book ID

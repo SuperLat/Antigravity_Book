@@ -176,6 +176,134 @@ export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ succe
   }
 };
 
+export const generateVolumesFromOutline = async (
+  config: ModelConfig,
+  outline: string,
+  customTemplate?: string
+): Promise<{ title: string; summary: string }[]> => {
+  const prompt = customTemplate
+    ? customTemplate.replace('{{context}}', outline)
+    : `
+作为一名资深网文策划，请根据以下全书大纲，将其拆分为 3-5 个具体的“卷”（Volume）。
+每一卷应该有一个明确的主题或阶段性目标，并包含该卷的详细剧情摘要。
+
+全书大纲：
+${outline}
+
+请以 JSON 数组格式返回，格式如下：
+[
+  {
+    "title": "第一卷：卷名",
+    "summary": "本卷的详细剧情摘要，包括主要冲突、高潮和结局..."
+  },
+  ...
+]
+只返回 JSON 数据，不要包含 markdown 标记或其他文本。
+`;
+
+  const systemInstruction = "你是一个专业的小说策划师。请根据用户提供的大纲，将其拆分为多个分卷。";
+
+  try {
+    let text = '';
+    if (config.provider === 'gemini') {
+      initializeGemini(config.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: config.modelName || 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 4096,
+        }
+      }));
+      text = response.text || "";
+    } else {
+      text = await retryWithBackoff(() => callOpenAICompatible(
+        config,
+        [{ role: 'user', content: prompt }],
+        systemInstruction
+      ));
+    }
+
+    try {
+      const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("Failed to parse volumes JSON", text);
+      throw new Error("AI 返回格式错误，无法解析分卷数据。");
+    }
+  } catch (error) {
+    throw new Error(`生成分卷失败: ${(error as Error).message}`);
+  }
+};
+
+export const generatePartsFromVolume = async (
+  config: ModelConfig,
+  volumeTitle: string,
+  volumeSummary: string,
+  customTemplate?: string
+): Promise<{ title: string; summary: string }[]> => {
+  const prompt = customTemplate
+    ? customTemplate.replace('{{volumeTitle}}', volumeTitle).replace('{{volumeSummary}}', volumeSummary)
+    : `
+作为一名资深网文策划，请根据以下卷大纲，将其拆分为 2-4 个"分部"（Part）。
+每个分部应该是该卷内的一个阶段性剧情单元，有明确的起承转合。
+
+卷标题：${volumeTitle}
+卷大纲：
+${volumeSummary}
+
+请以 JSON 数组格式返回，格式如下：
+[
+  {
+    "title": "第一部：分部名",
+    "summary": "本分部的详细剧情摘要..."
+  },
+  ...
+]
+只返回 JSON 数据，不要包含 markdown 标记或其他文本。
+`;
+
+  const systemInstruction = "你是一个专业的小说策划师。请根据用户提供的卷大纲，将其拆分为多个分部。";
+
+  try {
+    let text = '';
+    if (config.provider === 'gemini') {
+      initializeGemini(config.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: config.modelName || 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 4096,
+        }
+      }));
+      text = response.text || "";
+    } else {
+      text = await retryWithBackoff(() => callOpenAICompatible(
+        config,
+        [{ role: 'user', content: prompt }],
+        systemInstruction
+      ));
+    }
+
+    try {
+      const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("Failed to parse parts JSON", text);
+      throw new Error("AI 返回格式错误，无法解析分部数据。");
+    }
+  } catch (error) {
+    throw new Error(`生成分部失败: ${(error as Error).message}`);
+  }
+};
+
 // Generate chapter summary
 export const generateChapterSummary = async (
   modelConfig: ModelConfig,

@@ -2,7 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter } from '../types';
 import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload } from 'lucide-react';
-import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent } from '../services/geminiService';
+import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume } from '../services/geminiService';
+
+// ... (imports)
+
+// ... (inside component)
+
+const handleGenerateBeats = async () => {
+  // ... (existing code)
+};
+
 
 interface IdeaLabProps {
   ideas: IdeaProject[];
@@ -34,7 +43,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   onPushChapters
 }) => {
   const [activeIdeaId, setActiveIdeaId] = useState<string | null>(ideas[0]?.id || null);
-  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot' | 'beats'>('spark');
+  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot' | 'volume' | 'beats'>('spark');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
@@ -46,6 +55,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     spark: string;
     world: string;
     plot: string;
+    volume: string;
     beats: string;
   }>(() => {
     const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
@@ -54,6 +64,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       spark: defaultModelName,
       world: defaultModelName,
       plot: defaultModelName,
+      volume: defaultModelName,
       beats: defaultModelName
     };
   });
@@ -101,7 +112,10 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [sparkPromptId, setSparkPromptId] = useState<string>('default');
   const [worldPromptId, setWorldPromptId] = useState<string>('default'); // Actually used for Outline generation
   const [outlinePromptId, setOutlinePromptId] = useState<string>('default'); // Used for re-generating Outline
+  const [volumePromptId, setVolumePromptId] = useState<string>('default');
   const [beatsPromptId, setBeatsPromptId] = useState<string>('default');
+
+  const [activeVolumeId, setActiveVolumeId] = useState<string | null>(null);
 
   // Initialize default prompts
   const hasInitializedPrompts = useRef(false);
@@ -119,12 +133,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     initDefaultPrompt('brainstorm', setSparkPromptId);
     initDefaultPrompt('outline', setWorldPromptId);
     initDefaultPrompt('outline', setOutlinePromptId);
+    initDefaultPrompt('outline', setVolumePromptId); // Use outline prompts for volume for now, or add new category
     initDefaultPrompt('beats', setBeatsPromptId);
 
     hasInitializedPrompts.current = true;
   }, [prompts]);
 
   const activeIdea = ideas.find(i => i.id === activeIdeaId);
+
+  const [activePartId, setActivePartId] = useState<string | null>(null);
 
   // Filter prompts by category
   const brainstormPrompts = prompts.filter(p => p.category === 'brainstorm');
@@ -164,6 +181,71 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const result = await generateOutlineFromWorldview(tempConfig, activeIdea.worldview, activeIdea.spark, customTemplate);
       onUpdateIdea(activeIdea.id, { outline: result });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateVolumes = async () => {
+    if (!activeIdea || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const customTemplate = volumePromptId !== 'default' ? prompts.find(p => p.id === volumePromptId)?.template : undefined;
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.volume };
+
+      const volumesData = await generateVolumesFromOutline(tempConfig, activeIdea.outline, customTemplate);
+
+      const newVolumes = volumesData.map((v, idx) => ({
+        id: Date.now().toString() + idx,
+        title: v.title,
+        summary: v.summary,
+        order: idx + 1
+      }));
+
+      onUpdateIdea(activeIdea.id, { volumes: newVolumes });
+      if (newVolumes.length > 0) {
+        setActiveVolumeId(newVolumes[0].id);
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateParts = async () => {
+    if (!activeIdea || !activeVolumeId || isGenerating) return;
+    const activeVol = activeIdea.volumes?.find(v => v.id === activeVolumeId);
+    if (!activeVol) return;
+
+    setIsGenerating(true);
+    try {
+      const customTemplate = volumePromptId !== 'default' ? prompts.find(p => p.id === volumePromptId)?.template : undefined;
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.volume };
+
+      const partsData = await generatePartsFromVolume(tempConfig, activeVol.title, activeVol.summary, customTemplate);
+
+      const newParts = partsData.map((p, idx) => ({
+        id: Date.now().toString() + '_p' + idx,
+        title: p.title,
+        summary: p.summary,
+        order: idx + 1
+      }));
+
+      const updatedVolumes = activeIdea.volumes!.map(v =>
+        v.id === activeVolumeId ? { ...v, parts: newParts } : v
+      );
+
+      onUpdateIdea(activeIdea.id, { volumes: updatedVolumes });
+      if (newParts.length > 0) {
+        setActivePartId(newParts[0].id);
+      }
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -293,7 +375,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   };
 
   // Helper for Model Selector UI
-  const ModelSelector = ({ stage }: { stage: 'spark' | 'world' | 'plot' | 'beats' }) => (
+  const ModelSelector = ({ stage }: { stage: 'spark' | 'world' | 'plot' | 'volume' | 'beats' }) => (
     <div className="relative group">
       <Cpu className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
       <select
@@ -412,35 +494,53 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
           <div className="flex border-b border-gray-800 px-8">
             <button
               onClick={() => setActiveStage('spark')}
-              className={`py-4 mr-8 text-sm font-medium flex items-center border-b-2 transition-colors ${activeStage === 'spark' ? 'border-yellow-500 text-yellow-500' : 'border-transparent text-gray-500 hover:text-gray-300'
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'spark'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
                 }`}
             >
-              <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">1</div>
-              灵感碎片 (Spark)
+              <Lightbulb className="w-4 h-4 mr-2" />
+              1. 灵感 (Spark)
             </button>
             <button
               onClick={() => setActiveStage('world')}
-              className={`py-4 mr-8 text-sm font-medium flex items-center border-b-2 transition-colors ${activeStage === 'world' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-gray-300'
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'world'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
                 }`}
             >
-              <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">2</div>
-              世界构建 (World)
+              <Globe className="w-4 h-4 mr-2" />
+              2. 世界观 (World)
             </button>
             <button
               onClick={() => setActiveStage('plot')}
-              className={`py-4 mr-8 text-sm font-medium flex items-center border-b-2 transition-colors ${activeStage === 'plot' ? 'border-purple-500 text-purple-500' : 'border-transparent text-gray-500 hover:text-gray-300'
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'plot'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
                 }`}
             >
-              <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">3</div>
-              剧情大纲 (Plot)
+              <List className="w-4 h-4 mr-2" />
+              3. 剧情大纲 (Plot)
+            </button>
+            <button
+              onClick={() => setActiveStage('volume')}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'volume'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+            >
+              <List className="w-4 h-4 mr-2" />
+              4. 卷纲 (Volume)
             </button>
             <button
               onClick={() => setActiveStage('beats')}
-              className={`py-4 mr-8 text-sm font-medium flex items-center border-b-2 transition-colors ${activeStage === 'beats' ? 'border-green-500 text-green-500' : 'border-transparent text-gray-500 hover:text-gray-300'
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'beats'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
                 }`}
             >
-              <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">4</div>
-              章节细纲 (Beats)
+              <FileText className="w-4 h-4 mr-2" />
+              5. 章节细纲 (Beats)
             </button>
           </div>
 
@@ -600,6 +700,132 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                 </div>
               )}
 
+              {/* STAGE 4: VOLUME */}
+              {activeStage === 'volume' && (
+                <div className="max-w-4xl mx-auto space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-white flex items-center">
+                      <List className="w-5 h-5 mr-2 text-yellow-500" />
+                      分卷大纲 (Volume Outline)
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      <ModelSelector stage="volume" />
+                      <button
+                        onClick={handleGenerateVolumes}
+                        disabled={isGenerating || !activeIdea.outline}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-sm font-medium transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                        生成分卷
+                      </button>
+                      <button
+                        onClick={() => {
+                          const newVol = { id: Date.now().toString(), title: '新分卷', summary: '', order: (activeIdea.volumes?.length || 0) + 1 };
+                          const newVolumes = [...(activeIdea.volumes || []), newVol];
+                          onUpdateIdea(activeIdea.id, { volumes: newVolumes });
+                          setActiveVolumeId(newVol.id);
+                        }}
+                        className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md text-sm font-medium transition-colors flex items-center"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        添加分卷
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-6 h-[600px]">
+                    {/* Left: Volume List */}
+                    <div className="col-span-1 bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden flex flex-col">
+                      <div className="p-3 border-b border-gray-800 font-medium text-gray-400 text-sm">
+                        卷列表
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {activeIdea.volumes && activeIdea.volumes.length > 0 ? (
+                          activeIdea.volumes.map((vol, idx) => (
+                            <div
+                              key={vol.id}
+                              onClick={() => setActiveVolumeId(vol.id)}
+                              className={`p-3 rounded cursor-pointer transition-colors border ${activeVolumeId === vol.id
+                                ? 'bg-indigo-900/30 border-indigo-500/50 text-white'
+                                : 'bg-gray-800/30 border-transparent text-gray-400 hover:bg-gray-800'
+                                }`}
+                            >
+                              <div className="font-medium text-sm truncate">{vol.title}</div>
+                              <div className="text-xs text-gray-500 mt-1 truncate">{vol.summary}</div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-gray-600 text-sm">
+                            暂无分卷，请点击生成或添加
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Volume Detail */}
+                    <div className="col-span-2 bg-gray-900/50 border border-gray-800 rounded-lg flex flex-col overflow-hidden">
+                      {activeVolumeId ? (
+                        (() => {
+                          const activeVol = activeIdea.volumes?.find(v => v.id === activeVolumeId);
+                          if (!activeVol) return null;
+                          return (
+                            <div className="flex flex-col h-full">
+                              <div className="p-4 border-b border-gray-800 flex items-center gap-4">
+                                <input
+                                  value={activeVol.title}
+                                  onChange={(e) => {
+                                    const updated = activeIdea.volumes!.map(v => v.id === activeVol.id ? { ...v, title: e.target.value } : v);
+                                    onUpdateIdea(activeIdea.id, { volumes: updated });
+                                  }}
+                                  className="bg-transparent text-lg font-bold text-white focus:outline-none flex-1"
+                                  placeholder="卷标题"
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (!window.confirm('确定删除此卷吗？')) return;
+                                    const updated = activeIdea.volumes!.filter(v => v.id !== activeVol.id);
+                                    onUpdateIdea(activeIdea.id, { volumes: updated });
+                                    setActiveVolumeId(updated[0]?.id || null);
+                                  }}
+                                  className="text-gray-500 hover:text-red-400"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <textarea
+                                value={activeVol.summary}
+                                onChange={(e) => {
+                                  const updated = activeIdea.volumes!.map(v => v.id === activeVol.id ? { ...v, summary: e.target.value } : v);
+                                  onUpdateIdea(activeIdea.id, { volumes: updated });
+                                }}
+                                className="flex-1 bg-transparent p-4 text-gray-300 resize-none focus:outline-none leading-relaxed custom-scrollbar"
+                                placeholder="在此输入本卷的详细大纲..."
+                              />
+                              <div className="p-4 border-t border-gray-800 flex justify-end">
+                                <button
+                                  onClick={() => {
+                                    setVolumeContent(activeVol.summary);
+                                    setActiveStage('beats');
+                                  }}
+                                  className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-md text-sm font-medium transition-colors"
+                                >
+                                  <ArrowRight className="w-4 h-4 mr-2" />
+                                  拆分此卷细纲
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          请选择一个分卷
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* STAGE 4: BEATS */}
               {activeStage === 'beats' && (
                 <div className="space-y-6 animate-fadeIn">
@@ -702,12 +928,32 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           </div>
                         </div>
                       </div>
-                      <textarea
-                        value={volumeContent}
-                        onChange={(e) => setVolumeContent(e.target.value)}
-                        className="w-full h-32 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-green-500 outline-none resize-none mb-4"
-                        placeholder="粘贴或输入本卷的大纲内容，AI 将根据内容拆分为指定数量的章节细纲..."
-                      />
+                      {/* Volume Content Input */}
+                      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-6">
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-sm font-medium text-gray-400">本卷剧情大纲</label>
+                          {activeIdea.volumes && activeIdea.volumes.length > 0 && (
+                            <select
+                              onChange={(e) => {
+                                const vol = activeIdea.volumes?.find(v => v.id === e.target.value);
+                                if (vol) setVolumeContent(vol.summary);
+                              }}
+                              className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1"
+                            >
+                              <option value="">选择分卷导入...</option>
+                              {activeIdea.volumes.map(v => (
+                                <option key={v.id} value={v.id}>{v.title}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <textarea
+                          value={volumeContent}
+                          onChange={(e) => setVolumeContent(e.target.value)}
+                          className="w-full h-40 bg-transparent border border-gray-700 rounded-md p-3 text-sm text-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all resize-none"
+                          placeholder="在此输入本卷的详细剧情大纲，AI将根据此内容拆分章节..."
+                        />
+                      </div>
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <div className="relative">
