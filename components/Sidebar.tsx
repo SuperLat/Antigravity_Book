@@ -1,5 +1,5 @@
 import React from 'react';
-import { Book, FileText, BookOpen, Settings, Database, ChevronLeft, Trash2, User, Globe, BookMarked } from 'lucide-react';
+import { Book, FileText, BookOpen, Settings, Database, ChevronLeft, Trash2, User, Globe, BookMarked, ArrowDownAZ, ArrowUpAZ } from 'lucide-react';
 import { Book as BookType, EntityType } from '../types';
 
 interface SidebarProps {
@@ -8,6 +8,7 @@ interface SidebarProps {
   onSelectChapter: (id: string) => void;
   onCreateChapter: () => void;
   onDeleteChapter: (id: string) => void;
+  onSortChapters?: (order: 'asc' | 'desc') => void;
   activeView: 'editor' | 'wiki';
   onSelectView: (view: 'editor' | 'wiki') => void;
   onBackToShelf: () => void;
@@ -29,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectChapter,
   onCreateChapter,
   onDeleteChapter,
+  onSortChapters,
   activeView,
   onSelectView,
   onBackToShelf,
@@ -74,10 +76,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeView === 'editor' ? (
           <div className="space-y-1">
             <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center">
-              <span>目录</span>
-              <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded">{book.chapters.length}</span>
+              <div className="flex items-center gap-2">
+                <span>目录</span>
+                <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded">{book.chapters.length}</span>
+              </div>
+              {onSortChapters && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => onSortChapters('asc')}
+                    className="p-1 hover:bg-gray-800 rounded text-gray-500 hover:text-indigo-400"
+                    title="升序排列"
+                  >
+                    <ArrowDownAZ className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => onSortChapters('desc')}
+                    className="p-1 hover:bg-gray-800 rounded text-gray-500 hover:text-indigo-400"
+                    title="降序排列"
+                  >
+                    <ArrowUpAZ className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
             </div>
-            {book.chapters.map(chapter => (
+            {book.chapters.map((chapter, index) => (
               <div key={chapter.id} className="group relative">
                 <button
                   onClick={() => onSelectChapter(chapter.id)}
@@ -87,20 +109,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                 >
                   <FileText className={`w-4 h-4 mr-2 transition-opacity ${activeChapterId === chapter.id ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`} />
-                  <span className="truncate flex-1">{chapter.title || "未命名章节"}</span>
+                  <span className="truncate flex-1 pr-8">{chapter.title || "未命名章节"}</span>
                 </button>
-                {book.chapters.length > 1 && (
+
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm rounded px-1">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteChapter(chapter.id);
                     }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-all"
+                    className="p-1 hover:bg-red-600/20 rounded text-gray-500 hover:text-red-400 transition-all"
                     title="删除章节"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
-                )}
+                </div>
+
               </div>
             ))}
             <button

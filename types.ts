@@ -80,6 +80,7 @@ export interface IdeaProject {
   chapterBeats: ChapterBeat[]; // Stage 3b: Structured chapter plan (legacy/current)
   beatsSplitHistory?: BeatsSplit[]; // 拆分历史记录
   lastSplitChapterNum?: number; // 上次拆分到的章节号
+  linkedBookId?: string; // Associated Book ID
   updatedAt: number;
 }
 

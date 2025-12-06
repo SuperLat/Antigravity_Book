@@ -17,7 +17,7 @@ import { generateNovelContent, generateWorldviewFromIdea, generateChapterSummary
 import { booksAPI, promptsAPI, ideasAPI, settingsAPI, authAPI, aiLogsAPI } from './services/api';
 import { Book, Chapter, Entity, EntityType, ChatMessage, AppSettings, IdeaProject, PromptTemplate, ModelConfig } from './types';
 import { ChapterLink } from './components/ChapterLinkModal';
-import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User, History } from 'lucide-react';
+import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User, History, FileText, Plus } from 'lucide-react';
 
 // --- MOCK DATA ---
 const MOCK_ENTITIES_BOOK1: Entity[] = [
@@ -470,18 +470,83 @@ const App: React.FC = () => {
     setActiveChapterId(newChapter.id);
   };
 
+  // Helper: Parse chapter number (supports Arabic and Chinese numerals)
+  const parseChapterNumber = (title: string): number => {
+    // 1. Try Arabic numerals
+    const arabicMatch = title.match(/(\d+)/);
+    if (arabicMatch) return parseInt(arabicMatch[0], 10);
+
+    // 2. Try Chinese numerals (Simple implementation for common cases)
+    const cnNums: { [key: string]: number } = {
+      '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+      '百': 100, '千': 1000, '两': 2
+    };
+
+    // Extract potential Chinese number string (e.g., "第一千零一章" -> "一千零一")
+    const cnMatch = title.match(/[零一二三四五六七八九十百千两]+/);
+    if (!cnMatch) return 0;
+
+    const str = cnMatch[0];
+    let result = 0;
+    let temp = 0;
+    let unit = 1;
+
+    for (let i = 0; i < str.length; i++) {
+      const val = cnNums[str[i]];
+      if (val >= 10) {
+        if (val > unit) {
+          unit = val;
+          result = (result + temp) * val;
+          temp = 0;
+          unit = 1; // reset unit for next section
+        } else {
+          result += (temp || (i === 0 ? 1 : 0)) * val; // Handle "十" at start as 10
+          temp = 0;
+        }
+      } else {
+        temp = val;
+      }
+    }
+    result += temp;
+
+    // Special case for "十" (10), "十一" (11) etc. if logic above missed simple tens
+    if (result === 0 && str.includes('十')) {
+      // Fallback for simple tens if the loop logic was too strict for mixed cases
+      // But the loop above should handle "十一" -> 1*10 + 1 = 11
+    }
+
+    return result;
+  };
+
+  const handleSortChapters = (order: 'asc' | 'desc') => {
+    updateActiveBook(book => {
+      const sortedChapters = [...book.chapters].sort((a, b) => {
+        const numA = parseChapterNumber(a.title);
+        const numB = parseChapterNumber(b.title);
+
+        // If both have numbers, compare numbers
+        if (numA !== 0 && numB !== 0) {
+          return order === 'asc' ? numA - numB : numB - numA;
+        }
+
+        // Fallback to string comparison
+        return order === 'asc'
+          ? a.title.localeCompare(b.title, 'zh-CN')
+          : b.title.localeCompare(a.title, 'zh-CN');
+      });
+      return { ...book, chapters: sortedChapters };
+    });
+  };
+
   const handleDeleteChapter = (id: string) => {
     if (!activeBook) return;
-    if (activeBook.chapters.length <= 1) {
-      alert('至少需要保留一个章节');
-      return;
-    }
+    // Removed restriction to keep at least one chapter
     if (window.confirm('确定要删除这个章节吗？')) {
       updateActiveBook(book => {
         const newChapters = book.chapters.filter(c => c.id !== id);
         return { ...book, chapters: newChapters };
       });
-      // If deleting active chapter, switch to first chapter
+      // If deleting active chapter, switch to first chapter or empty string
       if (activeChapterId === id) {
         const remainingChapters = activeBook.chapters.filter(c => c.id !== id);
         setActiveChapterId(remainingChapters[0]?.id || '');
@@ -512,6 +577,35 @@ const App: React.FC = () => {
     }).catch(console.error);
 
     return summary;
+  };
+
+  const handlePushChaptersToBook = (bookId: string, chapters: Chapter[]) => {
+    const targetBook = books.find(b => b.id === bookId);
+    if (!targetBook) return;
+
+    // Check for duplicates
+    const existingTitles = new Set(targetBook.chapters.map(c => c.title));
+    const duplicates = chapters.filter(c => existingTitles.has(c.title));
+
+    if (duplicates.length > 0) {
+      if (!window.confirm(`检测到 ${duplicates.length} 个同名章节（如 "${duplicates[0].title}"），是否覆盖？`)) {
+        return;
+      }
+    }
+
+    const newChapters = [...targetBook.chapters];
+    chapters.forEach(newChap => {
+      const idx = newChapters.findIndex(c => c.title === newChap.title);
+      if (idx >= 0) {
+        // Keep ID if overwriting to preserve selection state if applicable
+        newChapters[idx] = { ...newChap, id: newChapters[idx].id };
+      } else {
+        newChapters.push(newChap);
+      }
+    });
+
+    handleUpdateBook({ ...targetBook, chapters: newChapters });
+    alert(`成功推送 ${chapters.length} 个章节到《${targetBook.title}》`);
   };
 
   const handleSaveSummary = (summary: string) => {
@@ -668,6 +762,7 @@ const App: React.FC = () => {
             onSelectChapter={setActiveChapterId}
             onCreateChapter={handleCreateChapter}
             onDeleteChapter={handleDeleteChapter}
+            onSortChapters={handleSortChapters}
             activeView={activeView}
             onSelectView={setActiveView}
             onBackToShelf={() => setActiveBookId(null)}
@@ -682,50 +777,68 @@ const App: React.FC = () => {
               <Minimize2 className="w-5 h-5" />
             </button>
           )}
-          {activeView === 'editor' && activeChapter ? (
-            <>
-              <EditorToolbar
-                onOpenAI={() => setShowAIAssistant(true)}
-                onOpenSummary={() => setShowSummaryModal(true)}
-                chapterTitle={activeChapter.title}
-                onAutoFormat={() => {
-                  // Auto-format: normalize spacing, paragraphs, etc.
-                  const content = activeChapter.content;
-                  const formatted = content
-                    // Remove multiple consecutive empty lines
-                    .replace(/\n{3,}/g, '\n\n')
-                    // Add space after Chinese punctuation if followed by text
-                    .replace(/([。！？；：」』】）"'])\s*(?=\S)/g, '$1\n\n')
-                    // Trim each line
-                    .split('\n')
-                    .map(line => line.trim())
-                    .join('\n')
-                    // Remove leading/trailing whitespace
-                    .trim();
-                  handleUpdateChapterContent(formatted);
-                }}
-              />
-              <div className="flex-1 overflow-hidden relative">
-                <Editor
-                  chapter={activeChapter}
-                  onChange={handleUpdateChapterContent}
-                  onTitleChange={handleUpdateChapterTitle}
+          {activeView === 'editor' ? (
+            activeChapter ? (
+              <>
+                <EditorToolbar
+                  onOpenAI={() => setShowAIAssistant(true)}
                   onOpenSummary={() => setShowSummaryModal(true)}
-                  fontSize={settings.appearance.fontSize}
+                  chapterTitle={activeChapter.title}
+                  onAutoFormat={() => {
+                    // Auto-format: normalize spacing, paragraphs, etc.
+                    const content = activeChapter.content;
+                    const formatted = content
+                      // Remove multiple consecutive empty lines
+                      .replace(/\n{3,}/g, '\n\n')
+                      // Add space after Chinese punctuation if followed by text
+                      .replace(/([。！？；：」』】）"'])\s*(?=\S)/g, '$1\n\n')
+                      // Trim each line
+                      .split('\n')
+                      .map(line => line.trim())
+                      .join('\n')
+                      // Remove leading/trailing whitespace
+                      .trim();
+                    handleUpdateChapterContent(formatted);
+                  }}
                 />
-              </div>
+                <div className="flex-1 overflow-hidden relative">
+                  <Editor
+                    chapter={activeChapter}
+                    onChange={handleUpdateChapterContent}
+                    onTitleChange={handleUpdateChapterTitle}
+                    onOpenSummary={() => setShowSummaryModal(true)}
+                    fontSize={settings.appearance.fontSize}
+                  />
+                </div>
 
-              <ChapterSummaryModal
-                isOpen={showSummaryModal}
-                onClose={() => setShowSummaryModal(false)}
-                chapter={activeChapter}
-                prompts={prompts}
-                models={settings.models || []}
-                defaultModelId={settings.defaultModelId || ''}
-                onGenerateSummary={handleGenerateSummary}
-                onSaveSummary={handleSaveSummary}
-              />
-            </>
+                <ChapterSummaryModal
+                  isOpen={showSummaryModal}
+                  onClose={() => setShowSummaryModal(false)}
+                  chapter={activeChapter}
+                  prompts={prompts}
+                  models={settings.models || []}
+                  defaultModelId={settings.defaultModelId || ''}
+                  onGenerateSummary={handleGenerateSummary}
+                  onSaveSummary={handleSaveSummary}
+                />
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-500 h-full bg-gray-950">
+                <div className="bg-gray-900/50 p-12 rounded-xl border border-gray-800 flex flex-col items-center">
+                  <FileText className="w-16 h-16 mb-6 opacity-20" />
+                  <p className="mb-6 text-lg font-medium">
+                    {activeBook.chapters.length === 0 ? '还没有章节' : '请选择一个章节'}
+                  </p>
+                  <button
+                    onClick={handleCreateChapter}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center transition-colors shadow-lg shadow-indigo-500/20"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    新建章节
+                  </button>
+                </div>
+              </div>
+            )
           ) : (
             <WikiView
               entities={activeBook.entities}
@@ -840,12 +953,15 @@ const App: React.FC = () => {
         {dashboardTab === 'idealab' && (
           <IdeaLab
             ideas={ideas}
+            books={books}
             settings={settings}
             prompts={prompts}
             onCreateIdea={handleCreateIdea}
             onUpdateIdea={handleUpdateIdea}
             onDeleteIdea={handleDeleteIdea}
             onConvertToBook={handleConvertIdeaToBook}
+            onSelectBook={handleSelectBook}
+            onPushChapters={handlePushChaptersToBook}
           />
         )}
         {dashboardTab === 'prompt_manager' && (

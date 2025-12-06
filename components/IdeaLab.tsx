@@ -1,17 +1,20 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit } from '../types';
-import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, Cpu, History, Clock } from 'lucide-react';
+import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter } from '../types';
+import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload } from 'lucide-react';
 import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent } from '../services/geminiService';
 
 interface IdeaLabProps {
   ideas: IdeaProject[];
+  books?: Book[];
   settings: AppSettings;
   prompts: PromptTemplate[];
   onCreateIdea: () => void;
   onUpdateIdea: (id: string, updates: Partial<IdeaProject>) => void;
   onDeleteIdea: (id: string) => void;
   onConvertToBook: (idea: IdeaProject) => void;
+  onSelectBook?: (id: string) => void;
+  onPushChapters?: (bookId: string, chapters: Chapter[]) => void;
 }
 
 const RECOMMENDED_MODELS = [
@@ -20,16 +23,20 @@ const RECOMMENDED_MODELS = [
 
 export const IdeaLab: React.FC<IdeaLabProps> = ({
   ideas,
+  books = [],
   settings,
   prompts,
   onCreateIdea,
   onUpdateIdea,
   onDeleteIdea,
-  onConvertToBook
+  onConvertToBook,
+  onSelectBook,
+  onPushChapters
 }) => {
   const [activeIdeaId, setActiveIdeaId] = useState<string | null>(ideas[0]?.id || null);
-  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot'>('spark');
+  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot' | 'beats'>('spark');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   // Track previous length to detect creation/deletion
   const prevIdeasLength = useRef(ideas.length);
@@ -51,19 +58,24 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     };
   });
 
-  // Init models with default if not set
-  useEffect(() => {
-    if (!stageModels.spark) {
-      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
-      const defaultModelName = defaultModel?.modelName || 'gemini-2.5-flash';
-      setStageModels({
-        spark: defaultModelName,
-        world: defaultModelName,
-        plot: defaultModelName,
-        beats: defaultModelName
-      });
-    }
-  }, []);
+  const [volumeContent, setVolumeContent] = useState('');
+  const [splitChapterCount, setSplitChapterCount] = useState(3);
+  const [showSplitHistory, setShowSplitHistory] = useState(false);
+  const [currentSplit, setCurrentSplit] = useState<BeatsSplit | null>(null);
+
+  // Linked Book Context State
+  const [useLinkedBookContext, setUseLinkedBookContext] = useState(false);
+  const [linkedRefChapterIds, setLinkedRefChapterIds] = useState<string[]>([]);
+  const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
+
+  // Expanded states for history items
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
+
+  const toggleHistoryExpand = (id: string) => {
+    setExpandedHistoryIds(prev =>
+      prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    );
+  };
 
   useEffect(() => {
     // 1. Detection: New idea created
@@ -179,51 +191,76 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   };
 
   // New: Volume-based beats splitting
-  const [volumeContent, setVolumeContent] = useState('');
-  const [splitChapterCount, setSplitChapterCount] = useState(4);
-  const [showSplitHistory, setShowSplitHistory] = useState(false);
-  const [currentSplit, setCurrentSplit] = useState<BeatsSplit | null>(null);
+
 
   const handleSplitVolume = async () => {
     if (!activeIdea || isGenerating || !volumeContent.trim()) return;
     setIsGenerating(true);
     try {
-      const customTemplate = beatsPromptId !== 'default' ? prompts.find(p => p.id === beatsPromptId)?.template : undefined;
-      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
-      if (!defaultModel) throw new Error('没有配置模型');
-      const tempConfig = { ...defaultModel, modelName: stageModels.beats };
+      const modelConfig = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!modelConfig) throw new Error('没有配置模型');
 
-      // Calculate start chapter from last split
-      const startChapter = (activeIdea.lastSplitChapterNum || 0) + 1;
+      const customTemplate = beatsPromptId !== 'default' ? beatsPrompts.find(p => p.id === beatsPromptId)?.template : undefined;
+      let startChapter = (activeIdea.lastSplitChapterNum || 0) + 1;
+      let finalContent = volumeContent;
 
-      const result = await generateBeatsFromVolumeContent(
-        tempConfig,
-        volumeContent,
+      // Handle Linked Book Context
+      if (useLinkedBookContext && activeIdea.linkedBookId) {
+        const linkedBook = books?.find(b => b.id === activeIdea.linkedBookId);
+        if (linkedBook && linkedBook.chapters.length > 0) {
+          if (linkedRefChapterIds.length > 0) {
+            // Multi-select mode
+            const selectedChapters = linkedBook.chapters.filter(c => linkedRefChapterIds.includes(c.id));
+            // Sort by order in book
+            const sortedSelected = selectedChapters.sort((a, b) => {
+              return linkedBook.chapters.indexOf(a) - linkedBook.chapters.indexOf(b);
+            });
+
+            const refContent = sortedSelected.map(c =>
+              `【章节：${c.title}】\n${c.summary || c.content.slice(0, 500)}...`
+            ).join('\n\n');
+
+            finalContent = `【前情提要 (基于已选关联章节)】\n${refContent}\n\n【接下来的剧情大纲】\n${volumeContent}`;
+          } else {
+            // Fallback to last chapter
+            const targetChapter = linkedBook.chapters[linkedBook.chapters.length - 1];
+            if (targetChapter) {
+              finalContent = `【前情提要 (基于已有关联章节: ${targetChapter.title})】\n${targetChapter.summary || targetChapter.content.slice(0, 800)}...\n\n【接下来的剧情大纲】\n${volumeContent}`;
+            }
+          }
+        }
+      }
+
+      const beats = await generateBeatsFromVolumeContent(
+        { ...modelConfig, modelName: stageModels.beats },
+        finalContent,
         splitChapterCount,
         startChapter,
         customTemplate
       );
 
-      // Create new split record
       const newSplit: BeatsSplit = {
         id: Date.now().toString(),
         volumeContent,
         chapterCount: splitChapterCount,
         startChapter,
-        beats: result,
+        beats,
         createdAt: Date.now()
       };
 
-      // Update idea with new split and history
-      const existingHistory = activeIdea.beatsSplitHistory || [];
+      const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
+      const lastChapterNum = startChapter + beats.length - 1;
+
+      // Update idea with new split history and cumulative beats
       onUpdateIdea(activeIdea.id, {
-        beatsSplitHistory: [...existingHistory, newSplit],
-        lastSplitChapterNum: startChapter + splitChapterCount - 1,
-        chapterBeats: [...(activeIdea.chapterBeats || []), ...result]
+        beatsSplitHistory: updatedHistory,
+        lastSplitChapterNum: lastChapterNum,
+        chapterBeats: [...(activeIdea.chapterBeats || []), ...beats]
       });
 
       setCurrentSplit(newSplit);
-      setVolumeContent('');
+      setVolumeContent(''); // Clear input
+      setShowSplitHistory(false); // Show current result
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -231,18 +268,53 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
+  const handleDeleteSplit = (splitId: string) => {
+    if (!activeIdea || !window.confirm('确定要删除这条拆分记录吗？')) return;
+
+    const updatedHistory = activeIdea.beatsSplitHistory?.filter(s => s.id !== splitId) || [];
+
+    // Recalculate lastSplitChapterNum based on remaining history
+    // This is a simplification; ideally we might want to re-sort or handle gaps, 
+    // but for now we just take the max end chapter of remaining splits or 0
+    let maxChapter = 0;
+    updatedHistory.forEach(split => {
+      const end = split.startChapter + split.beats.length - 1;
+      if (end > maxChapter) maxChapter = end;
+    });
+
+    onUpdateIdea(activeIdea.id, {
+      beatsSplitHistory: updatedHistory,
+      lastSplitChapterNum: maxChapter
+      // Note: We are NOT removing the actual beats from chapterBeats array here 
+      // because mapping them back is complex. We assume user manages chapterBeats separately or we treat history as a log.
+      // If strict sync is needed, we'd need to filter chapterBeats too. 
+      // For now, let's keep it simple as a history log management.
+    });
+  };
+
   // Helper for Model Selector UI
   const ModelSelector = ({ stage }: { stage: 'spark' | 'world' | 'plot' | 'beats' }) => (
     <div className="relative group">
       <Cpu className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-      <input
-        list="idealab-models"
+      <select
         value={stageModels[stage]}
         onChange={(e) => setStageModels(prev => ({ ...prev, [stage]: e.target.value }))}
-        className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-2 w-32 focus:outline-none focus:border-indigo-500 hover:border-gray-600 transition-colors truncate"
-        placeholder="Model..."
+        className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-8 w-40 focus:outline-none focus:border-indigo-500 hover:border-gray-600 transition-colors truncate cursor-pointer"
         title={`当前阶段使用的模型: ${stageModels[stage]}`}
-      />
+      >
+        {settings.models?.map(model => (
+          <option key={model.id} value={model.modelName}>
+            {model.name || model.modelName}
+          </option>
+        ))}
+        {(!settings.models || settings.models.length === 0) && (
+          <>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gpt-4o">GPT-4o</option>
+          </>
+        )}
+      </select>
+      <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
     </div>
   );
 
@@ -315,13 +387,25 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
               className="bg-transparent text-xl font-bold text-white focus:outline-none placeholder-gray-600 w-1/2"
               placeholder="未命名灵感"
             />
-            <button
-              onClick={() => onConvertToBook(activeIdea)}
-              className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-md text-sm font-medium transition-colors shadow-lg shadow-green-500/20"
-            >
-              <BookPlus className="w-4 h-4 mr-2" />
-              转为作品
-            </button>
+            <div className="flex items-center gap-2">
+              {activeIdea.linkedBookId ? (
+                <button
+                  onClick={() => onSelectBook?.(activeIdea.linkedBookId!)}
+                  className="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  进入写作
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowLinkModal(true)}
+                  className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-md text-sm font-medium transition-colors shadow-lg shadow-green-500/20"
+                >
+                  <BookPlus className="w-4 h-4 mr-2" />
+                  转为作品
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Stages Navigation */}
@@ -349,6 +433,14 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             >
               <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">3</div>
               剧情大纲 (Plot)
+            </button>
+            <button
+              onClick={() => setActiveStage('beats')}
+              className={`py-4 mr-8 text-sm font-medium flex items-center border-b-2 transition-colors ${activeStage === 'beats' ? 'border-green-500 text-green-500' : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+            >
+              <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center mr-2 text-xs">4</div>
+              章节细纲 (Beats)
             </button>
           </div>
 
@@ -501,16 +593,92 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     <textarea
                       value={activeIdea.outline}
                       onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
-                      className="w-full h-64 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-purple-500 outline-none resize-none font-serif"
+                      className="w-full h-[500px] bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-purple-500 outline-none resize-none font-serif"
                       placeholder="大纲生成区..."
                     />
                   </div>
+                </div>
+              )}
 
+              {/* STAGE 4: BEATS */}
+              {activeStage === 'beats' && (
+                <div className="space-y-6 animate-fadeIn">
                   {/* Chapter Beats - Volume Split */}
-                  <div className="border-t border-gray-800 pt-8">
+                  <div>
                     <h3 className="text-lg font-bold text-green-400 flex items-center mb-6">
                       <FileText className="w-5 h-5 mr-2" /> 章节细纲拆分
                     </h3>
+
+                    {/* Linked Book Context Option */}
+                    {activeIdea.linkedBookId && (
+                      <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-lg mb-6 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <LinkIcon className="w-5 h-5 text-indigo-400" />
+                          <div>
+                            <div className="text-sm font-medium text-indigo-300">
+                              已关联作品: {books?.find(b => b.id === activeIdea.linkedBookId)?.title}
+                            </div>
+                            <div className="text-xs text-indigo-400/70 mt-1">
+                              开启后，AI 将读取选中章节的内容作为前情提要，使生成的细纲更连贯。
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          {useLinkedBookContext && (
+                            <div className="relative">
+                              <button
+                                onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
+                                className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 min-w-[120px] flex items-center justify-between"
+                              >
+                                <span className="truncate max-w-[100px]">
+                                  {linkedRefChapterIds.length > 0
+                                    ? `已选 ${linkedRefChapterIds.length} 章`
+                                    : '选择参考章节'}
+                                </span>
+                                <ChevronDown className="w-3 h-3 ml-1" />
+                              </button>
+
+                              {isMultiSelectOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setIsMultiSelectOpen(false)} />
+                                  <div className="absolute top-full left-0 mt-1 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                                    <div className="p-2 space-y-1">
+                                      {books?.find(b => b.id === activeIdea.linkedBookId)?.chapters.map(c => (
+                                        <label key={c.id} className="flex items-center p-2 hover:bg-gray-700 rounded cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={linkedRefChapterIds.includes(c.id)}
+                                            onChange={(e) => {
+                                              if (e.target.checked) {
+                                                setLinkedRefChapterIds([...linkedRefChapterIds, c.id]);
+                                              } else {
+                                                setLinkedRefChapterIds(linkedRefChapterIds.filter(id => id !== c.id));
+                                              }
+                                            }}
+                                            className="rounded border-gray-600 text-indigo-600 focus:ring-indigo-500 mr-2"
+                                          />
+                                          <span className="text-xs text-gray-300 truncate">{c.title}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={useLinkedBookContext}
+                              onChange={(e) => setUseLinkedBookContext(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            <span className="ml-3 text-sm font-medium text-gray-300">参考现有章节</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Volume Input Section */}
                     <div className="bg-green-900/10 border border-green-500/30 p-6 rounded-lg mb-6">
@@ -597,8 +765,28 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       // Current Split
                       currentSplit ? (
                         <div className="space-y-4">
-                          <div className="text-xs text-gray-500 mb-2">
-                            第 {currentSplit.startChapter} - {currentSplit.startChapter + currentSplit.beats.length - 1} 章
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-xs text-gray-500">
+                              第 {currentSplit.startChapter} - {currentSplit.startChapter + currentSplit.beats.length - 1} 章
+                            </div>
+                            {/* Push Button for Current Split */}
+                            {activeIdea.linkedBookId && onPushChapters && (
+                              <button
+                                onClick={() => {
+                                  const chapters = currentSplit.beats.map((beat, idx) => ({
+                                    id: Date.now() + `_c${idx}`,
+                                    title: beat.chapterTitle,
+                                    summary: beat.summary,
+                                    content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
+                                  }));
+                                  onPushChapters(activeIdea.linkedBookId!, chapters);
+                                }}
+                                className="text-xs flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors"
+                              >
+                                <Upload className="w-3 h-3" />
+                                推送到目录
+                              </button>
+                            )}
                           </div>
                           {currentSplit.beats.map((beat, idx) => (
                             <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
@@ -630,36 +818,77 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     ) : (
                       // History
                       activeIdea.beatsSplitHistory && activeIdea.beatsSplitHistory.length > 0 ? (
-                        <div className="space-y-6">
-                          {activeIdea.beatsSplitHistory.map((split, splitIdx) => (
-                            <div key={split.id} className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
-                              <div className="bg-gray-800/50 px-4 py-3 flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-sm font-medium text-gray-300">
-                                    第 {split.startChapter} - {split.startChapter + split.beats.length - 1} 章
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    ({split.beats.length} 章)
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
-                                  <Clock className="w-3 h-3" />
-                                  {new Date(split.createdAt).toLocaleString()}
-                                </div>
-                              </div>
-                              <div className="p-4 space-y-3">
-                                {split.beats.map((beat, idx) => (
-                                  <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
-                                    <div className="flex justify-between items-start mb-1">
-                                      <h4 className="font-medium text-white text-sm">{beat.chapterTitle}</h4>
-                                      <span className="text-xs text-gray-500">第 {split.startChapter + idx} 章</span>
-                                    </div>
-                                    <p className="text-xs text-gray-400">{beat.summary}</p>
+                        <div className="space-y-4">
+                          {activeIdea.beatsSplitHistory.map((split, splitIdx) => {
+                            const isExpanded = expandedHistoryIds.includes(split.id);
+                            return (
+                              <div key={split.id} className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
+                                <div
+                                  className="bg-gray-800/50 px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-gray-800 transition-colors"
+                                  onClick={() => toggleHistoryExpand(split.id)}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                                    <span className="text-sm font-medium text-gray-300">
+                                      第 {split.startChapter} - {split.startChapter + split.beats.length - 1} 章
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      ({split.beats.length} 章)
+                                    </span>
                                   </div>
-                                ))}
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                      <Clock className="w-3 h-3" />
+                                      {new Date(split.createdAt).toLocaleString()}
+                                    </div>
+                                    {/* Push Button for History Item */}
+                                    {activeIdea.linkedBookId && onPushChapters && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const chapters = split.beats.map((beat, idx) => ({
+                                            id: Date.now() + `_c${idx}`,
+                                            title: beat.chapterTitle,
+                                            summary: beat.summary,
+                                            content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
+                                          }));
+                                          onPushChapters(activeIdea.linkedBookId!, chapters);
+                                        }}
+                                        className="text-gray-500 hover:text-indigo-400 transition-colors"
+                                        title="推送到目录"
+                                      >
+                                        <Upload className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteSplit(split.id);
+                                      }}
+                                      className="text-gray-500 hover:text-red-400 transition-colors"
+                                      title="删除记录"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {isExpanded && (
+                                  <div className="p-4 space-y-3 border-t border-gray-800 animate-fadeIn">
+                                    {split.beats.map((beat, idx) => (
+                                      <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                                        <div className="flex justify-between items-start mb-1">
+                                          <h4 className="font-medium text-white text-sm">{beat.chapterTitle}</h4>
+                                          <span className="text-xs text-gray-500">第 {split.startChapter + idx} 章</span>
+                                        </div>
+                                        <p className="text-xs text-gray-400">{beat.summary}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
@@ -690,7 +919,90 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             </button>
           </div>
         </div>
+      )
+      }
+      {/* Link Book Modal */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl w-[500px] shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-800">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <LinkIcon className="w-5 h-5 mr-2 text-indigo-400" />
+                关联作品
+              </h3>
+              <p className="text-sm text-gray-400 mt-2">
+                将当前灵感与一个作品关联，以便在拆分细纲时参考作品进度，或直接将灵感转化为新作品。
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <button
+                onClick={() => {
+                  onConvertToBook(activeIdea);
+                  setShowLinkModal(false);
+                }}
+                className="w-full p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg flex items-center justify-between group transition-all"
+              >
+                <div className="flex items-center">
+                  <div className="w-10 h-10 bg-green-900/30 rounded-lg flex items-center justify-center mr-4 group-hover:bg-green-900/50 transition-colors">
+                    <Plus className="w-5 h-5 text-green-400" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-gray-200">创建新作品</div>
+                    <div className="text-xs text-gray-500">使用当前灵感标题和设定创建一个全新的作品</div>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-gray-600 group-hover:text-gray-300" />
+              </button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-800"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-gray-900 px-2 text-gray-500">或者关联现有作品</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {books && books.length > 0 ? (
+                  books.map(book => (
+                    <button
+                      key={book.id}
+                      onClick={() => {
+                        onUpdateIdea(activeIdea.id, { linkedBookId: book.id });
+                        setShowLinkModal(false);
+                      }}
+                      className="w-full p-3 bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-indigo-500/50 rounded-lg flex items-center justify-between group transition-all"
+                    >
+                      <div className="flex items-center">
+                        <BookPlus className="w-4 h-4 text-indigo-400 mr-3" />
+                        <span className="text-gray-300 font-medium">{book.title}</span>
+                      </div>
+                      {activeIdea.linkedBookId === book.id && (
+                        <span className="text-xs text-green-400 bg-green-900/20 px-2 py-1 rounded">已关联</span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-gray-500 text-sm">
+                    书架上还没有作品
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-950 border-t border-gray-800 flex justify-end">
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </div >
   );
 };
