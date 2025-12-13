@@ -89,15 +89,15 @@ export interface Volume {
 export interface IdeaProject {
   id: string;
   title: string;
-  spark: string; // Stage 1: The core idea/trope
-  worldview: string; // Stage 2: Generated world setting
-  outline: string; // Stage 3a: Macro outline
-  volumes?: Volume[]; // Stage 3b: Volume outlines
-  chapterBeats: ChapterBeat[]; // Stage 4: Structured chapter plan
-  beatsSplitHistory?: BeatsSplit[]; // 拆分历史记录
-  lastSplitChapterNum?: number; // 上次拆分到的章节号
-  linkedBookId?: string; // Associated Book ID
-  updatedAt: number;
+  spark: string;
+  storyline?: string; // 新增：故事线
+  worldview: string; // Keep for compatibility, or repurpose
+  outline: string;
+  volumes?: Volume[];
+  chapterBeats?: ChapterBeat[];
+  beatsSplitHistory?: BeatsSplit[];
+  lastSplitChapterNum?: number;
+  linkedBookId?: string; // ID of the actual book project this idea is linked to
 }
 
 // --- Settings Interfaces ---
@@ -126,6 +126,7 @@ export interface ModelConfig {
   temperature: number;
   maxTokens: number;
   contextWindow: number;
+  enableThinking?: boolean; // 新增：是否启用思考模式 (DeepSeek)
 }
 
 export interface AppearanceConfig {

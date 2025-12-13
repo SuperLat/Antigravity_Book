@@ -78,6 +78,22 @@ const callOpenAICompatible = async (
     max_tokens: modelConfig.maxTokens,
   };
 
+  // --- 火山引擎/DeepSeek 特有配置开关 ---
+  // 使用前端传入的配置，默认为 false (disabled)
+  const ENABLE_DEEPSEEK_THINKING = modelConfig.enableThinking ?? false; 
+
+  // 检测是否为 DeepSeek 系列模型 (兼容 deekseep 拼写)
+  const isDeepSeek = /deepseek|deekseep/i.test(modelConfig.modelName);
+
+  if (isDeepSeek) {
+    // 火山引擎特定参数: 控制思考模式
+    requestBody.thinking = {
+      type: ENABLE_DEEPSEEK_THINKING ? "enabled" : "disabled"
+    };
+    console.log(`🧠 DeepSeek 思考模式: ${ENABLE_DEEPSEEK_THINKING ? '已启用' : '已禁用'}`);
+  }
+  // ------------------------------------
+
   console.log('🚀 API 请求:', {
     url: useBackendProxy ? '/api/proxy' : `${baseUrl}/chat/completions`,
     targetUrl: useBackendProxy ? `${baseUrl}/chat/completions` : undefined,
@@ -460,6 +476,116 @@ export const generateNovelContent = async ({
   }
 };
 
+export const generateStorylineFromIdea = async (
+  modelConfig: ModelConfig,
+  spark: string,
+  customTemplate?: string
+): Promise<string> => {
+  let finalPrompt = '';
+
+  if (customTemplate) {
+    finalPrompt = customTemplate
+      .replace(/{{input}}/g, spark)
+      .replace(/{{spark}}/g, spark);
+  } else {
+    finalPrompt = `
+      【核心梗/脑洞】：${spark}
+      
+      请基于这个核心脑洞，梳理出一条清晰、完整的故事线（Storyline）。
+      
+      要求：
+      1. 明确故事的主角及其核心目标。
+      2. 概括故事的起因、经过和结果（Start, Middle, End）。
+      3. 包含关键的转折点和高潮事件。
+      4. 既然是故事线，请注重逻辑连贯性，字数控制在 500-800 字左右。
+      
+      请直接输出故事线内容。
+    `;
+  }
+
+  const systemInstruction = "你是一个擅长梳理故事脉络的小说策划。请将用户的碎片化脑洞转化为连贯的故事线。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 2048,
+        }
+      }));
+      return response.text || "未能生成故事线。";
+    } else {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
+  } catch (error) {
+    throw new Error(`生成故事线失败: ${(error as Error).message}`);
+  }
+};
+
+export const generateOutlineFromStoryline = async (
+  modelConfig: ModelConfig,
+  storyline: string,
+  customTemplate?: string
+): Promise<string> => {
+  let finalPrompt = '';
+
+  if (customTemplate) {
+    finalPrompt = customTemplate
+      .replace(/{{storyline}}/g, storyline)
+      .replace(/{{input}}/g, storyline);
+  } else {
+    finalPrompt = `
+      【故事线】：
+      ${storyline}
+
+      请基于以上故事线，设计一个标准的网文大纲（三幕式或多卷式）。
+      要求：
+      1. 主角人设简述（基于故事线推导）。
+      2. 详细规划每一幕/卷的核心冲突、关键剧情点和爽点。
+      3. 结局设计。
+      
+      请用 Markdown 格式输出，结构清晰。
+    `;
+  }
+
+  const systemInstruction = "你是一个擅长构建剧情结构的小说主编。请根据故事线，设计情节紧凑、冲突激烈的大纲。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        }
+      }));
+      return response.text || "未能生成大纲。";
+    } else {
+      return await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
+  } catch (error) {
+    throw new Error(`生成大纲失败: ${(error as Error).message}`);
+  }
+};
+
 export const generateWorldviewFromIdea = async (
   modelConfig: ModelConfig,
   ideaContent: string,
@@ -526,15 +652,18 @@ export const generateOutlineFromWorldview = async (
 
   if (customTemplate) {
     finalPrompt = customTemplate
-      .replace(/{{worldview}}/g, worldview)
+      .replace(/{{worldview}}/g, worldview || "（暂无详细设定，请根据核心梗自由发挥）")
       .replace(/{{spark}}/g, spark)
       .replace(/{{input}}/g, spark);
   } else {
+    // 动态构建 Prompt，如果 worldview 为空则不强调它
+    const worldviewSection = worldview ? `【世界观设定】：${worldview}` : '';
+    
     finalPrompt = `
       【核心梗】：${spark}
-      【世界观设定】：${worldview}
+      ${worldviewSection}
 
-      请基于以上设定，设计一个标准的三幕式小说大纲。
+      请基于以上信息，设计一个标准的三幕式小说大纲。
       要求：
       1. 主角背景设定（底层贫民/意外卷入者等）。
       2. 每一幕（第一卷、第二卷、第三卷）的核心冲突和高潮点。

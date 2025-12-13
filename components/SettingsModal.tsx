@@ -348,6 +348,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                             ))}
                           </datalist>
                         </div>
+                        {/* DeepSeek Thinking Toggle */}
+                        {/deepseek|deekseep/i.test(selectedModel.modelName) && (
+                          <div className="mt-4 bg-indigo-900/20 border border-indigo-500/30 rounded-lg p-3 flex items-center justify-between">
+                            <div>
+                              <div className="text-sm font-medium text-indigo-300">启用 DeepSeek 深度思考模式</div>
+                              <div className="text-xs text-indigo-400/70 mt-1">
+                                开启后，模型会先进行思维链推导 (Chain of Thought) 再输出结果。响应速度会变慢，但逻辑性更强。
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleUpdateModel({ enableThinking: !(selectedModel.enableThinking ?? false) })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${selectedModel.enableThinking ? 'bg-indigo-500' : 'bg-gray-700'}`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${selectedModel.enableThinking ? 'translate-x-6' : 'translate-x-1'}`}
+                              />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="space-y-6 pt-4 border-t border-gray-800">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
-import { ContextPanel } from './components/ContextPanel';
+
 import { WikiView } from './components/WikiView';
 import { Bookshelf } from './components/Bookshelf';
 import { IdeaLab } from './components/IdeaLab';
@@ -647,13 +647,18 @@ const App: React.FC = () => {
         throw new Error('没有配置模型,请在设置中添加模型。');
       }
 
+      // Find the previous chapter's summary
+      const currentChapterIndex = activeBook.chapters.findIndex(c => c.id === activeChapterId);
+      const previousChapter = currentChapterIndex > 0 ? activeBook.chapters[currentChapterIndex - 1] : null;
+      const previousChapterSummary = previousChapter?.summary || '（无）';
+
       const responseText = await generateNovelContent({
         modelConfig: modelConfig,
         userPrompt: prompt,
         selectedEntities,
         selectedChapters,
         activeChapter,
-        previousChapterSummary: "（暂无前情提要）"
+        previousChapterSummary: previousChapterSummary
       });
 
       // Log to AI Logs ONLY if category is present

@@ -139,7 +139,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
         const serial = (index + 1).toString().padStart(3, '0');
         const safeTitle = (chapter.title || "Untitled").replace(/[\\/:*?"<>|]/g, "_");
         const fileName = `${serial}_${safeTitle}`;
-        addSplitContentToZip(folders.content, fileName, chapter.content);
+        const fileContent = `---SUMMARY---\n${chapter.summary || ''}\n---CONTENT---\n${chapter.content}`;
+        addSplitContentToZip(folders.content, fileName, fileContent);
       });
 
       // 4. Generate and Download
@@ -265,12 +266,23 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
           const match = group.name.match(/^(\d{3})_(.*)$/);
           const order = match ? parseInt(match[1]) : 999;
           const title = match ? match[2].replace(/_/g, ' ') : group.name;
+          
+          let summary = '';
+          let content = fullContent;
+          
+          const summaryMatch = fullContent.match(/^---SUMMARY---\n([\s\S]*?)\n---CONTENT---\n/);
+
+          if (summaryMatch) {
+            summary = summaryMatch[1].trim();
+            content = fullContent.substring(summaryMatch[0].length);
+          }
+
 
           chapters.push({
             id: Date.now().toString() + Math.random(),
             title: title,
-            content: fullContent,
-            summary: '' // summary usually not in txt export unless parsed
+            content: content,
+            summary: summary
           });
           // Store order temp for sorting
           (chapters[chapters.length - 1] as any)._order = order;
