@@ -912,7 +912,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               onChange={(e) => setSplitChapterCount(Number(e.target.value))}
                               className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-green-500"
                             >
-                              {[2, 3, 4, 5, 6, 7, 8, 10].map(n => (
+                              {[2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => (
                                 <option key={n} value={n}>{n} 章</option>
                               ))}
                             </select>
@@ -1082,22 +1082,32 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                       {new Date(split.createdAt).toLocaleString()}
                                     </div>
                                     {/* Push Button for History Item */}
-                                    {activeIdea.linkedBookId && onPushChapters && (
+                                    {onPushChapters && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          const chapters = split.beats.map((beat, idx) => ({
-                                            id: Date.now() + `_c${idx}`,
-                                            title: beat.chapterTitle,
-                                            summary: beat.summary,
-                                            content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
-                                          }));
-                                          onPushChapters(activeIdea.linkedBookId!, chapters);
+                                          if (activeIdea.linkedBookId) {
+                                            const chapters = split.beats.map((beat, idx) => ({
+                                              id: Date.now() + `_c${idx}_${Math.random().toString(36).substr(2, 5)}`, // Ensure unique ID
+                                              title: beat.chapterTitle,
+                                              summary: beat.summary,
+                                              content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
+                                            }));
+                                            onPushChapters(activeIdea.linkedBookId, chapters);
+                                          } else {
+                                            if (window.confirm('当前灵感未关联作品，是否现在关联？')) {
+                                              setShowLinkModal(true);
+                                            }
+                                          }
                                         }}
-                                        className="text-gray-500 hover:text-indigo-400 transition-colors"
-                                        title="推送到目录"
+                                        className={`flex items-center gap-1 text-xs transition-colors border px-2 py-1 rounded ${activeIdea.linkedBookId
+                                          ? 'text-indigo-400 hover:text-indigo-300 border-indigo-500/30 bg-indigo-900/20'
+                                          : 'text-gray-400 hover:text-gray-300 border-gray-600/30 bg-gray-800'
+                                          }`}
+                                        title={activeIdea.linkedBookId ? "将此记录推送到作品目录" : "关联作品后可推送"}
                                       >
-                                        <Upload className="w-4 h-4" />
+                                        <Upload className="w-3 h-3" />
+                                        推送
                                       </button>
                                     )}
                                     <button

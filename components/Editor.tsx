@@ -39,7 +39,7 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onChange, onTitleChange
     <div className="flex-1 flex flex-col h-full w-full bg-gray-950 relative">
       {/* Header with title */}
       <div className="px-6 pt-4 pb-2 border-b border-gray-800/50">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="w-full flex items-center justify-between">
           <input
             type="text"
             value={chapter.title}

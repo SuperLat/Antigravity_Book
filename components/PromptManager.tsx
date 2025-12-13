@@ -272,6 +272,8 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
                 <p>2. 此处编写的内容主要是具体的 **任务指令**。</p>
                 <p>3. 示例： "请重写上述段落，重点突出环境的压抑感，使用更多关于声音的描写。"</p>
               </div>
+
+
             </div>
 
           </div>

@@ -411,16 +411,21 @@ export const generateNovelContent = async ({
     `【${getTypeLabel(e.type)} - ${e.name}】\n简介：${e.description}\n详细内容：${e.content}`
   ).join('\n\n');
 
-  // 1.5 Construct Context from selected Chapters
-  const chapterBlock = selectedChapters.map(c =>
-    `【参考章节 - ${c.title}】\n${c.content}`
-  ).join('\n\n');
+  // 1.5 Construct Context from selected Chapters (Limit content length to avoid token overflow)
+  const chapterBlock = selectedChapters.map(c => {
+    // Take the last 3000 characters of the referenced chapter to keep context relevant but manageable
+    const contentPreview = c.content.length > 3000 
+      ? `...(前文省略)\n${c.content.slice(-3000)}` 
+      : c.content;
+    return `【参考章节 - ${c.title}】\n${contentPreview}`;
+  }).join('\n\n');
 
   // 2. Construct Writing Context (Current Story State)
+  // Increase context window for current chapter to ensure continuity
   const storyContext = `
     【前情提要】: ${previousChapterSummary || "暂无"}
-    【当前章节内容 (参考)】: 
-    ${activeChapter.content.slice(-modelConfig.contextWindow)} 
+    【当前章节内容 (续写起点)】: 
+    ${activeChapter.content.slice(-3000)} 
     ... (以上为当前正文末尾)
   `;
 
@@ -428,15 +433,17 @@ export const generateNovelContent = async ({
   const finalPrompt = `
     ${contextBlock ? `--- 关联的知识库 (Wiki) ---\n${contextBlock}\n------------------------------` : ''}
     
-    ${chapterBlock ? `--- 关联的章节 (Chapters) ---\n${chapterBlock}\n------------------------------` : ''}
+    ${chapterBlock ? `--- 关联的章节 (前文参考) ---\n${chapterBlock}\n------------------------------` : ''}
 
     ${storyContext}
 
     --- 你的任务 ---
     ${userPrompt}
+    
+    (请继续撰写正文，保持风格一致，情节连贯。)
   `;
 
-  const systemInstruction = "你是一位专业的小说家助手。你的目标是基于提供的世界观和角色设定，辅助用户进行小说创作、扩写或润色。请务必保持现有文本的风格和语气。所有输出默认使用中文。";
+  const systemInstruction = "你是一位专业的小说家助手。你的目标是基于提供的世界观、角色设定和前文章节，辅助用户进行小说创作、扩写或润色。请务必保持现有文本的风格和语气。所有输出默认使用中文。";
 
   try {
     // Route to different providers
@@ -450,20 +457,20 @@ export const generateNovelContent = async ({
         config: {
           systemInstruction,
           temperature: modelConfig.temperature,
-          maxOutputTokens: modelConfig.maxTokens,
+          maxOutputTokens: Math.max(modelConfig.maxTokens || 2048, 4096), // Ensure sufficient output tokens for writing
         }
       }));
       return response.text || "未能生成内容。";
     } else if (modelConfig.provider === 'openai' || modelConfig.provider === 'custom') {
       return await callOpenAICompatible(
-        modelConfig,
+        { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 2048, 4096) }, // Override maxTokens locally
         [{ role: 'user', content: finalPrompt }],
         systemInstruction
       );
     } else if (modelConfig.provider === 'ollama') {
       // Ollama uses OpenAI-compatible API
       return await callOpenAICompatible(
-        { ...modelConfig, baseUrl: modelConfig.baseUrl || 'http://localhost:11434/v1' },
+        { ...modelConfig, baseUrl: modelConfig.baseUrl || 'http://localhost:11434/v1', maxTokens: Math.max(modelConfig.maxTokens || 2048, 4096) },
         [{ role: 'user', content: finalPrompt }],
         systemInstruction
       );
@@ -727,15 +734,21 @@ export const generateChapterBeatsFromOutline = async (
     请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
     [
       {
-        "chapterTitle": "第一章：...",
-        "summary": "本章发生的具体事件摘要...",
+        "chapterTitle": "第一章：具体标题",
+        "summary": "第一章的具体事件摘要...",
+        "keyCharacters": ["主角名", "配角名"],
+        "conflict": "核心冲突点"
+      },
+      {
+        "chapterTitle": "第二章：具体标题",
+        "summary": "第二章的具体事件摘要...",
         "keyCharacters": ["主角名", "配角名"],
         "conflict": "核心冲突点"
       }
     ]
   `;
 
-  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。";
+  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。请确保每一章的内容都是独特的，不要重复相同的大纲。";
 
   try {
     let text = '';
@@ -810,8 +823,14 @@ export const generateBeatsFromVolumeContent = async (
     请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
     [
       {
-        "chapterTitle": "第${startChapter}章：...",
-        "summary": "本章发生的具体事件摘要...",
+        "chapterTitle": "第${startChapter}章：具体标题",
+        "summary": "本章的具体事件摘要...",
+        "keyCharacters": ["主角名", "配角名"],
+        "conflict": "核心冲突点"
+      },
+      {
+        "chapterTitle": "第${startChapter + 1}章：具体标题",
+        "summary": "下一章的具体事件摘要...",
         "keyCharacters": ["主角名", "配角名"],
         "conflict": "核心冲突点"
       }
@@ -820,7 +839,7 @@ export const generateBeatsFromVolumeContent = async (
     必须返回恰好 ${chapterCount} 个章节。
   `;
 
-  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。";
+  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。请确保每一章的内容都是独特的，不要重复相同的大纲。";
 
   try {
     let text = '';

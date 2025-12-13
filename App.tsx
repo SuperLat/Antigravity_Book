@@ -63,16 +63,7 @@ const INITIAL_BOOKS: Book[] = [
 ];
 
 // Default Prompts
-const DEFAULT_PROMPTS: PromptTemplate[] = [
-  { id: 'describe', name: '场景描写', description: '基于当前设定描写环境', category: 'drafting', isBuiltIn: true, template: '结合当前世界观设定，详细描写当前场景的环境，注重氛围感和五感体验，字数300字左右。' },
-  { id: 'dialogue', name: '对话润色', description: '优化人物对白', category: 'refining', isBuiltIn: true, template: '请润色上述对话，使其听起来更自然，并更符合角色的性格特征，增加必要的动作描写和潜台词。' },
-  { id: 'action', name: '战斗/动作', description: '描写激烈的打斗', category: 'drafting', isBuiltIn: true, template: '描写一段紧张激烈的动作/战斗场面，注重动作细节、打击感和画面感，融合世界观中的力量体系。' },
-  { id: 'expand', name: '情节扩写', description: '从摘要扩写为正文', category: 'brainstorm', isBuiltIn: true, template: '根据这段简短的摘要，扩写成一个细节丰富的完整场景，保持叙事流畅。' },
-  { id: 'char_design', name: '反派生成', description: '生成反派人设', category: 'character', isBuiltIn: true, template: '请设计一个反派角色。要求：与主角有利益冲突，外表绅士但内心冷酷。请生成：姓名、外貌描写、性格关键词、能力缺点。' },
-  { id: 'world_build', name: '世界观构建', description: '根据核心梗生成世界', category: 'world', isBuiltIn: true, template: '核心梗：{{spark}}\n\n请设计一个详细的世界观。包含：\n1. 力量体系\n2. 社会结构\n3. 核心矛盾\n4. 地理风貌\n' },
-  { id: 'outline_gen', name: '三幕式大纲', description: '生成标准大纲', category: 'outline', isBuiltIn: true, template: '基于已有的世界观和核心梗，请规划一个标准的三幕式小说大纲，包含起因、发展、高潮和结尾。世界观：{{worldview}}' },
-  { id: 'beat_split', name: '章节拆分', description: '细化为章节细纲', category: 'beats', isBuiltIn: true, template: '请将上述大纲的第一部分拆分为5-10个具体的章节，每个章节包含标题、核心事件和出场人物。大纲：{{outline}}' },
-];
+const DEFAULT_PROMPTS: PromptTemplate[] = [];
 
 const DEFAULT_SETTINGS: AppSettings = {
   models: [{
@@ -216,7 +207,9 @@ const App: React.FC = () => {
 
         setBooks(booksData.length > 0 ? booksData : INITIAL_BOOKS);
         setIdeas(ideasData);
-        setPrompts(promptsData.length > 0 ? promptsData : DEFAULT_PROMPTS);
+        // Filter out built-in prompts to enforce "delete built-in prompts" policy
+        const loadedPrompts = promptsData.length > 0 ? promptsData : DEFAULT_PROMPTS;
+        setPrompts(loadedPrompts.filter(p => !p.isBuiltIn));
         setSettings(settingsData ? migrateSettings(settingsData) : DEFAULT_SETTINGS);
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -388,6 +381,73 @@ const App: React.FC = () => {
   };
 
   const handleConvertIdeaToBook = (idea: IdeaProject) => {
+    // Build comprehensive entity list from Idea data
+    const newEntities: Entity[] = [];
+
+    // 1. Spark (Core Idea)
+    if (idea.spark) {
+      newEntities.push({
+        id: Date.now() + '_spark',
+        type: EntityType.IDEA,
+        name: '核心灵感 (Spark)',
+        description: '作品的初始灵感来源',
+        tags: ['灵感', '核心梗'],
+        content: idea.spark
+      });
+    }
+
+    // 2. Worldview (if exists)
+    if (idea.worldview) {
+      newEntities.push({
+        id: Date.now() + '_w',
+        type: EntityType.WORLDVIEW,
+        name: '世界观设定',
+        description: '基于灵感实验室生成',
+        tags: ['核心设定', '世界观'],
+        content: idea.worldview
+      });
+    }
+
+    // 3. Storyline (Story Arc)
+    if (idea.storyline) {
+      newEntities.push({
+        id: Date.now() + '_story',
+        type: EntityType.PLOT,
+        name: '故事主线',
+        description: '初步构思的故事脉络',
+        tags: ['大纲', '故事线'],
+        content: idea.storyline
+      });
+    }
+
+    // 4. Full Outline
+    if (idea.outline) {
+      newEntities.push({
+        id: Date.now() + '_p',
+        type: EntityType.PLOT,
+        name: '全书大纲',
+        description: '三幕式结构',
+        tags: ['大纲', '结构'],
+        content: idea.outline
+      });
+    }
+
+    // 5. Volumes (Volume Outline)
+    if (idea.volumes && idea.volumes.length > 0) {
+      const volumeContent = idea.volumes.map(v =>
+        `### 第 ${v.order} 卷：${v.title}\n${v.summary}`
+      ).join('\n\n');
+
+      newEntities.push({
+        id: Date.now() + '_volumes',
+        type: EntityType.PLOT,
+        name: '分卷规划',
+        description: '按卷划分的剧情大纲',
+        tags: ['大纲', '分卷'],
+        content: volumeContent
+      });
+    }
+
     const newBook: Book = {
       id: Date.now().toString(),
       title: idea.title,
@@ -395,25 +455,8 @@ const App: React.FC = () => {
       description: idea.spark,
       status: 'serializing',
       cover: 'from-yellow-600 to-orange-600',
-      entities: [
-        {
-          id: Date.now() + '_w',
-          type: EntityType.WORLDVIEW,
-          name: '世界观设定',
-          description: '基于灵感实验室生成',
-          tags: ['核心设定'],
-          content: idea.worldview
-        },
-        {
-          id: Date.now() + '_p',
-          type: EntityType.PLOT,
-          name: '全书大纲',
-          description: '三幕式结构',
-          tags: ['大纲'],
-          content: idea.outline
-        }
-      ],
-      chapters: idea.chapterBeats.length > 0
+      entities: newEntities,
+      chapters: idea.chapterBeats && idea.chapterBeats.length > 0
         ? idea.chapterBeats.map((beat, idx) => ({
           id: Date.now() + `_c${idx}`,
           title: beat.chapterTitle,
@@ -424,7 +467,10 @@ const App: React.FC = () => {
     };
 
     setBooks(prev => [...prev, newBook]);
-    alert(`成功将《${idea.title}》转化为书籍！已添加到书架。`);
+    // Link the idea to the new book automatically
+    handleUpdateIdea(idea.id, { linkedBookId: newBook.id });
+    
+    alert(`成功将《${idea.title}》转化为书籍！所有灵感数据已保存至设定集。`);
     setDashboardTab('bookshelf');
   };
 
@@ -790,19 +836,21 @@ const App: React.FC = () => {
                   onOpenSummary={() => setShowSummaryModal(true)}
                   chapterTitle={activeChapter.title}
                   onAutoFormat={() => {
-                    // Auto-format: normalize spacing, paragraphs, etc.
+                    // Auto-format: normalize spacing, paragraphs
                     const content = activeChapter.content;
                     const formatted = content
-                      // Remove multiple consecutive empty lines
-                      .replace(/\n{3,}/g, '\n\n')
-                      // Add space after Chinese punctuation if followed by text
-                      .replace(/([。！？；：」』】）"'])\s*(?=\S)/g, '$1\n\n')
-                      // Trim each line
+                      // Normalize newlines
+                      .replace(/\r\n/g, '\n')
+                      .replace(/\r/g, '\n')
+                      // Split into lines
                       .split('\n')
+                      // Trim whitespace from each line
                       .map(line => line.trim())
-                      .join('\n')
-                      // Remove leading/trailing whitespace
-                      .trim();
+                      // Remove empty lines
+                      .filter(line => line.length > 0)
+                      // Join with double newline for paragraph spacing
+                      .join('\n\n');
+                    
                     handleUpdateChapterContent(formatted);
                   }}
                 />
