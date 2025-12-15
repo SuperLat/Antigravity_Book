@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X, Link, Plus, Copy, Check } from 'lucide-react';
+import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X, Link, Plus, Copy, Check, RefreshCw } from 'lucide-react';
 import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter, ModelConfig } from '../types';
 import { ChapterLinkModal, ChapterLink } from './ChapterLinkModal';
 
@@ -83,14 +83,43 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
     const activeTemplate = prompts.find(p => p.id === selectedTemplateId);
 
+    // History & Display State
+    const [showHistory, setShowHistory] = useState(false);
+    const [displayedMessage, setDisplayedMessage] = useState<ChatMessage | null>(null);
+
     // Only show AI responses (model messages)
     const aiResponses = chatHistory.filter(msg => msg.role === 'model');
 
+    // Default Blank on Open
     useEffect(() => {
         if (isOpen) {
+            setDisplayedMessage(null);
+            setShowHistory(false);
             setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         }
-    }, [isOpen, chatHistory]);
+    }, [isOpen]);
+
+    // Update displayed message when new history arrives (Show Latest)
+    // We track the last known ID to detect *new* messages
+    const lastResponseIdRef = useRef<string | null>(null);
+    
+    useEffect(() => {
+        const lastResponse = aiResponses[aiResponses.length - 1];
+        if (lastResponse && lastResponse.id !== lastResponseIdRef.current) {
+            setDisplayedMessage(lastResponse);
+            lastResponseIdRef.current = lastResponse.id;
+            // If generating, ensure we are not in history mode so user sees the result
+            if (isGenerating) {
+                setShowHistory(false);
+            }
+        }
+    }, [aiResponses, isGenerating]);
+
+    useEffect(() => {
+        if (isOpen && !showHistory) {
+            setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        }
+    }, [isOpen, displayedMessage, showHistory]);
 
     const handleSend = () => {
         if (!promptInput.trim() && !selectedTemplateId) return;
@@ -135,6 +164,16 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         await navigator.clipboard.writeText(content);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const handleRegenerate = () => {
+        // Find last user message
+        // Ensure we are reading the USER'S instruction (prompt), NOT the AI's generated content.
+        const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user');
+        if (!lastUserMsg) return;
+        
+        // Use current settings (model/category) for regeneration to allow tweaking
+        onGenerate(lastUserMsg.text, selectedModel, selectedCategory || undefined);
     };
 
     if (!isOpen) return null;
@@ -302,6 +341,15 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                             </div>
 
                             <button
+                                onClick={() => setShowHistory(!showHistory)}
+                                className={`text-gray-500 hover:text-white hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${showHistory ? 'bg-gray-800 text-white' : ''}`}
+                                title={showHistory ? '返回生成页' : '查看历史记录'}
+                            >
+                                {showHistory ? <Sparkles className="w-4 h-4" /> : <Book className="w-4 h-4" />} 
+                                {showHistory ? '返回' : '历史'}
+                            </button>
+
+                            <button
                                 onClick={onClose}
                                 disabled={isGenerating}
                                 className="text-gray-500 hover:text-white hidden md:block disabled:opacity-30 disabled:cursor-not-allowed"
@@ -325,9 +373,11 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                             </div>
                         )}
 
-                        {/* AI Responses Only */}
+                        {/* AI Responses / Content Area */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-950 custom-scrollbar">
-                            {aiResponses.length === 0 && !isGenerating && (
+                            
+                            {/* Empty State (Only if no displayed message AND not generating AND not showing history) */}
+                            {!displayedMessage && !isGenerating && !showHistory && (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-600 space-y-4">
                                     <div className="p-4 bg-gray-900 rounded-full">
                                         <Sparkles className="w-8 h-8 text-indigo-500" />
@@ -338,30 +388,80 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                     </div>
                                 </div>
                             )}
-                            {aiResponses.map((msg) => (
-                                <div key={msg.id} className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden">
+
+                            {/* HISTORY VIEW: List all responses */}
+                            {showHistory && (
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between text-xs text-gray-500 uppercase tracking-wider mb-4 border-b border-gray-800 pb-2">
+                                        <span>历史生成记录 ({aiResponses.length})</span>
+                                    </div>
+                                    {aiResponses.map((msg, index) => (
+                                        <div key={msg.id} className="bg-gray-800/30 border border-gray-800 hover:border-gray-700 rounded-lg overflow-hidden transition-colors group">
+                                            {/* History Item Header */}
+                                            <div className="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-gray-800">
+                                                <span className="text-xs text-gray-500">
+                                                    {new Date(msg.timestamp).toLocaleTimeString()}
+                                                </span>
+                                                <button
+                                                    onClick={() => {
+                                                        setDisplayedMessage(msg);
+                                                        setShowHistory(false);
+                                                    }}
+                                                    className="text-xs text-indigo-400 hover:text-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    查看此条
+                                                </button>
+                                            </div>
+                                            {/* Preview Content */}
+                                            <div className="p-3 text-sm text-gray-400 line-clamp-3">
+                                                {msg.text}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {aiResponses.length === 0 && (
+                                        <div className="text-center py-8 text-gray-600 italic">暂无历史记录</div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* SINGLE MESSAGE VIEW (Main) */}
+                            {!showHistory && displayedMessage && (
+                                <div className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden animate-fadeIn">
                                     {/* Response Header */}
                                     <div className="flex items-center justify-between px-4 py-2 bg-gray-800/50 border-b border-gray-700">
                                         <span className="text-xs text-gray-500">
-                                            {new Date(msg.timestamp).toLocaleTimeString()}
+                                            {new Date(displayedMessage.timestamp).toLocaleTimeString()}
+                                        </span>
+                                        <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded">
+                                            最新生成
                                         </span>
                                     </div>
                                     {/* Response Content */}
                                     <div className="p-4 text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
-                                        {msg.text}
+                                        {displayedMessage.text}
                                     </div>
-                                    {/* Action Buttons at Bottom */}
+                                    {/* Action Buttons */}
                                     <div className="flex items-center justify-end gap-2 px-4 py-3 bg-gray-800/30 border-t border-gray-700">
+                                        {!isGenerating && (
+                                            <button
+                                                onClick={handleRegenerate}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors text-xs mr-auto"
+                                                title="使用当前配置重新生成"
+                                            >
+                                                <RefreshCw className="w-4 h-4" />
+                                                重新生成
+                                            </button>
+                                        )}
                                         <button
-                                            onClick={() => handleCopy(msg.id, msg.text)}
+                                            onClick={() => handleCopy(displayedMessage.id, displayedMessage.text)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors text-xs"
                                         >
-                                            {copiedId === msg.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                                            {copiedId === msg.id ? '已复制' : '复制'}
+                                            {copiedId === displayedMessage.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                                            {copiedId === displayedMessage.id ? '已复制' : '复制'}
                                         </button>
                                         {onInsertToChapter && (
                                             <button
-                                                onClick={() => handleInsert(msg.text)}
+                                                onClick={() => handleInsert(displayedMessage.text)}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded transition-colors"
                                             >
                                                 <Plus className="w-4 h-4" />
@@ -370,13 +470,14 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                         )}
                                     </div>
                                 </div>
-                            ))}
+                            )}
+
                             {isGenerating && (
                                 <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center space-x-2">
                                     <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                                     <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                                     <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                    <span className="text-sm text-gray-500 ml-2">正在生成...</span>
+                                    <span className="text-sm text-gray-500 ml-2">AI 正在思考生成中...</span>
                                 </div>
                             )}
                             <div ref={chatEndRef} />

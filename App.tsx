@@ -20,47 +20,7 @@ import { ChapterLink } from './components/ChapterLinkModal';
 import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User, History, FileText, Plus } from 'lucide-react';
 
 // --- MOCK DATA ---
-const MOCK_ENTITIES_BOOK1: Entity[] = [
-  {
-    id: '1',
-    type: EntityType.CHARACTER,
-    name: '林渊',
-    description: '一名拥有机械义肢的落魄剑修。',
-    tags: ['主角', '剑修', '赛博朋克'],
-    content: '年龄：24岁。外貌：凌乱的黑发，左眼植入蓝色义眼，右臂是生锈的机械义肢，背负一把断剑。性格：愤世嫉俗但内心正义，为了寻找失踪的妹妹而来到下城区。特长：能够用黑客技术破解阵法。'
-  },
-  {
-    id: '2',
-    type: EntityType.WORLDVIEW,
-    name: '霓虹天阙',
-    description: '一座通过抽取地脉灵气运作的超级巨塔城市。',
-    tags: ['地点', '设定'],
-    content: '天阙直插云霄，将世界分为上城与下城。上城是修真财阀的乐园，灵气充裕；下城终年不见天日，充满了酸雨和辐射，人们通过劣质的义体和非法丹药苟延残喘。'
-  },
-  {
-    id: '3',
-    type: EntityType.CHARACTER,
-    name: '瑶光',
-    description: '诞生于网络数据海中的AI灵体。',
-    tags: ['配角', 'AI'],
-    content: '形象：只有巴掌大的全息投影少女。能力：可以瞬间入侵任何未加密的灵能终端，是林渊的情报来源。'
-  }
-];
-
-const INITIAL_BOOKS: Book[] = [
-  {
-    id: 'book1',
-    title: '天阙残响',
-    author: 'User',
-    description: '赛博朋克与古典修真的碰撞。当飞剑遇上电磁炮，当元婴大能被上传至云端...',
-    status: 'serializing',
-    cover: 'from-indigo-600 to-blue-600',
-    entities: MOCK_ENTITIES_BOOK1,
-    chapters: [
-      { id: 'c1', title: '第一章：雨夜断剑', content: "雨水带着酸涩的铁锈味，顺着林渊的脸颊滑落，渗进他那只生锈的机械臂接口里，带来一阵轻微的刺痛。\n\n他拉紧了破旧的风衣领口，抬头望向头顶。那座名为“霓虹天阙”的巨塔宛如一把利剑，刺破了下城终年不散的阴霾。塔顶的灵能霓虹灯光怪陆离，那是上城修真者们醉生梦死的证明，而在这下城的暗巷里，只有腐烂的垃圾和绝望的喘息。\n\n林渊检查了一下义眼的读数，灵力储备仅剩 12%。这点灵力连启动一次御剑术都够呛，但在这种鬼地方点一支烟倒是足够了。\n\n“喂，林渊，检测到三个高能反应正在靠近。”耳边传来了瑶光略带焦急的电子音。\n\n" },
-    ]
-  }
-];
+const INITIAL_BOOKS: Book[] = [];
 
 // Default Prompts
 const DEFAULT_PROMPTS: PromptTemplate[] = [];
@@ -88,7 +48,9 @@ const DEFAULT_SETTINGS: AppSettings = {
 const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
   try {
     const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
+    if (!stored) return defaultValue;
+    const parsed = JSON.parse(stored);
+    return parsed !== null && parsed !== undefined ? parsed : defaultValue;
   } catch (e) {
     console.error(`Failed to load ${key}`, e);
     return defaultValue;
@@ -205,18 +167,18 @@ const App: React.FC = () => {
           })
         ]);
 
-        setBooks(booksData.length > 0 ? booksData : INITIAL_BOOKS);
-        setIdeas(ideasData);
+        setBooks(Array.isArray(booksData) ? booksData : []);
+        setIdeas(Array.isArray(ideasData) ? ideasData : []);
         // Filter out built-in prompts to enforce "delete built-in prompts" policy
-        const loadedPrompts = promptsData.length > 0 ? promptsData : DEFAULT_PROMPTS;
+        const loadedPrompts = Array.isArray(promptsData) ? promptsData : [];
         setPrompts(loadedPrompts.filter(p => !p.isBuiltIn));
         setSettings(settingsData ? migrateSettings(settingsData) : DEFAULT_SETTINGS);
       } catch (error) {
         console.error('Failed to load data:', error);
         // Fallback to LocalStorage
-        setBooks(loadFromStorage('novelcraft_books', INITIAL_BOOKS));
-        setIdeas(loadFromStorage('novelcraft_ideas', []));
-        setPrompts(loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS));
+        setBooks(loadFromStorage('novelcraft_books', INITIAL_BOOKS) || []);
+        setIdeas(loadFromStorage('novelcraft_ideas', []) || []);
+        setPrompts(loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS) || []);
         const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
         setSettings(migrateSettings(loaded));
       } finally {
@@ -349,8 +311,24 @@ const App: React.FC = () => {
     booksAPI.save(updatedBook).catch(err => console.error("Failed to save book update", err));
   };
 
-  const handleDeleteBook = (id: string) => {
-    if (window.confirm('确定要删除这本书吗？')) setBooks(prev => prev.filter(b => b.id !== id));
+  const handleDeleteBook = async (id: string) => {
+    if (window.confirm('确定要删除这本书吗？')) {
+      try {
+        await booksAPI.delete(id);
+        setBooks(prev => prev.filter(b => b.id !== id));
+
+        // Unlink associated idea if exists
+        const linkedIdea = ideas.find(i => i.linkedBookId === id);
+        if (linkedIdea) {
+          const updatedIdea = { ...linkedIdea, linkedBookId: undefined };
+          setIdeas(prev => prev.map(i => i.id === linkedIdea.id ? updatedIdea : i));
+          await ideasAPI.save(updatedIdea);
+        }
+      } catch (error) {
+        console.error("Failed to delete book", error);
+        alert("删除失败，请重试");
+      }
+    }
   };
 
   const handleImportBook = (book: Book) => {
@@ -376,8 +354,16 @@ const App: React.FC = () => {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, ...updates, updatedAt: Date.now() } : i));
   };
 
-  const handleDeleteIdea = (id: string) => {
-    if (window.confirm('确定删除此灵感项目吗？')) setIdeas(prev => prev.filter(i => i.id !== id));
+  const handleDeleteIdea = async (id: string) => {
+    if (window.confirm('确定删除此灵感项目吗？')) {
+      try {
+        await ideasAPI.delete(id);
+        setIdeas(prev => prev.filter(i => i.id !== id));
+      } catch (error) {
+        console.error("Failed to delete idea", error);
+        alert("删除失败，请重试");
+      }
+    }
   };
 
   const handleConvertIdeaToBook = (idea: IdeaProject) => {
@@ -458,10 +444,10 @@ const App: React.FC = () => {
       entities: newEntities,
       chapters: idea.chapterBeats && idea.chapterBeats.length > 0
         ? idea.chapterBeats.map((beat, idx) => ({
-          id: Date.now() + `_c${idx}`,
+          id: Date.now().toString() + `_c${idx}`,
           title: beat.chapterTitle,
           summary: beat.summary,
-          content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
+          content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters ? beat.keyCharacters.join(', ') : ''}\n\n(在此开始写作...)`
         }))
         : [{ id: Date.now() + '_c', title: '第一章', content: '' }]
     };
@@ -483,10 +469,15 @@ const App: React.FC = () => {
     setPrompts(prev => prev.map(p => p.id === updatedPrompt.id ? updatedPrompt : p));
   };
 
-  const handleDeletePrompt = (id: string) => {
+  const handleDeletePrompt = async (id: string) => {
     if (window.confirm('确定删除此指令吗？')) {
-      // Functional update to ensure we are filtering the latest state
-      setPrompts(prev => prev.filter(p => p.id !== id));
+      try {
+        await promptsAPI.delete(id);
+        setPrompts(prev => prev.filter(p => p.id !== id));
+      } catch (error) {
+        console.error("Failed to delete prompt", error);
+        alert("删除失败，请重试");
+      }
     }
   };
 

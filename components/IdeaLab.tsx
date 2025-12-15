@@ -272,18 +272,60 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
+  const [splitMode, setSplitMode] = useState<'partial' | 'full'>('partial');
+
   const handleGenerateBeats = async () => {
     if (!activeIdea || isGenerating) return;
     setIsGenerating(true);
     try {
       const customTemplate = beatsPromptId !== 'default' ? prompts.find(p => p.id === beatsPromptId)?.template : undefined;
-      // Use Stage Specific Model (Beats generation is usually inside Plot stage UI, but is a distinct step)
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!defaultModel) throw new Error('没有配置模型');
+      
+      // Determine content source based on available data
+      let sourceContent = activeIdea.outline;
+      
+      // If no outline but volume content is present (user pasted it), use that? 
+      // Actually, 'Full Split' usually implies splitting the *entire* outline.
+      // If the user wants to split the current input text into *all* chapters, we can pass volumeContent if outline is missing.
+      if (!sourceContent && volumeContent) {
+        sourceContent = volumeContent;
+      }
+
+      if (!sourceContent) throw new Error('请先生成全书大纲，或在下方输入框中输入内容。');
+
       const tempConfig = { ...defaultModel, modelName: stageModels.beats };
 
-      const result = await generateChapterBeatsFromOutline(tempConfig, activeIdea.outline, customTemplate);
+      // We might want to let user specify total chapters for full split too?
+      // For now, let's assume the AI decides or we pass a hint if needed.
+      // But `generateChapterBeatsFromOutline` usually just takes the outline.
+      
+      const result = await generateChapterBeatsFromOutline(tempConfig, sourceContent, customTemplate);
+      
+      // Update Idea with new beats (replacing old ones? or appending?)
+      // "Full Split" implies overwriting or setting the canonical list.
       onUpdateIdea(activeIdea.id, { chapterBeats: result });
+      
+      // Also update history log for reference?
+      const newSplit: BeatsSplit = {
+        id: Date.now().toString(),
+        volumeContent: "【全书拆分】\n" + sourceContent.slice(0, 200) + "...",
+        chapterCount: result.length,
+        startChapter: 1,
+        beats: result,
+        createdAt: Date.now()
+      };
+      
+      const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
+      onUpdateIdea(activeIdea.id, { 
+        chapterBeats: result, 
+        beatsSplitHistory: updatedHistory,
+        lastSplitChapterNum: result.length 
+      });
+
+      setCurrentSplit(newSplit);
+      setShowSplitHistory(false);
+
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -292,8 +334,6 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   };
 
   // New: Volume-based beats splitting
-
-
   const handleSplitVolume = async () => {
     if (!activeIdea || isGenerating || !volumeContent.trim()) return;
     setIsGenerating(true);
@@ -902,78 +942,129 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                     {/* Volume Input Section */}
                     <div className="bg-green-900/10 border border-green-500/30 p-6 rounded-lg mb-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <label className="text-sm font-medium text-green-300">输入卷大纲内容</label>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">拆分章数：</span>
-                            <select
-                              value={splitChapterCount}
-                              onChange={(e) => setSplitChapterCount(Number(e.target.value))}
-                              className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-green-500"
-                            >
-                              {[2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => (
-                                <option key={n} value={n}>{n} 章</option>
-                              ))}
-                            </select>
+                      
+                      {/* Split Mode Selector */}
+                      <div className="flex items-center gap-6 mb-6 border-b border-green-500/20 pb-4">
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name="splitMode"
+                            value="partial"
+                            checked={splitMode === 'partial'}
+                            onChange={() => setSplitMode('partial')}
+                            className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500 focus:ring-2"
+                          />
+                          <span className="ml-2 text-sm font-medium text-gray-200">部分拆分 (输入内容拆成N章)</span>
+                        </label>
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name="splitMode"
+                            value="full"
+                            checked={splitMode === 'full'}
+                            onChange={() => setSplitMode('full')}
+                            className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500 focus:ring-2"
+                          />
+                          <span className="ml-2 text-sm font-medium text-gray-200">全部拆分 (全书大纲一键生成)</span>
+                        </label>
+                      </div>
+
+                      {splitMode === 'partial' ? (
+                        <>
+                          <div className="flex justify-between items-center mb-4">
+                            <label className="text-sm font-medium text-green-300">输入卷大纲内容</label>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">拆分章数：</span>
+                                <select
+                                  value={splitChapterCount}
+                                  onChange={(e) => setSplitChapterCount(Number(e.target.value))}
+                                  className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-green-500"
+                                >
+                                  {[2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => (
+                                    <option key={n} value={n}>{n} 章</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                下次从第 {(activeIdea.lastSplitChapterNum || 0) + 1} 章开始
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            下次从第 {(activeIdea.lastSplitChapterNum || 0) + 1} 章开始
+                          {/* Volume Content Input */}
+                          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-6">
+                            <div className="flex justify-between items-center mb-2">
+                              <label className="text-sm font-medium text-gray-400">本卷剧情大纲</label>
+                              {activeIdea.volumes && activeIdea.volumes.length > 0 && (
+                                <select
+                                  onChange={(e) => {
+                                    const vol = activeIdea.volumes?.find(v => v.id === e.target.value);
+                                    if (vol) setVolumeContent(vol.summary);
+                                  }}
+                                  className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1"
+                                >
+                                  <option value="">选择分卷导入...</option>
+                                  {activeIdea.volumes.map(v => (
+                                    <option key={v.id} value={v.id}>{v.title}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                            <textarea
+                              value={volumeContent}
+                              onChange={(e) => setVolumeContent(e.target.value)}
+                              className="w-full h-40 bg-transparent border border-gray-700 rounded-md p-3 text-sm text-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all resize-none"
+                              placeholder="在此输入本卷的详细剧情大纲，AI将根据此内容拆分章节..."
+                            />
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <div className="relative">
+                                <select
+                                  value={beatsPromptId}
+                                  onChange={(e) => setBeatsPromptId(e.target.value)}
+                                  className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1.5 pl-3 pr-8 rounded text-xs focus:outline-none focus:border-green-500"
+                                >
+                                  <option value="default">默认拆分逻辑</option>
+                                  {beatsPrompts.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
+                              <ModelSelector stage="beats" />
+                            </div>
+                            <button
+                              onClick={handleSplitVolume}
+                              disabled={!volumeContent.trim() || isGenerating}
+                              className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm flex items-center disabled:opacity-50 transition-colors"
+                            >
+                              {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                              拆分 {splitChapterCount} 章
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        // Full Split Mode UI
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <p className="text-gray-400 mb-6 text-sm text-center max-w-lg">
+                            此模式将读取上一步生成的<b>“全书大纲”</b>或<b>“分卷大纲”</b>，并自动规划全书的章节细纲。<br />
+                            (注意：这将覆盖当前的细纲列表)
+                          </p>
+                          
+                          <div className="flex items-center gap-4">
+                            <ModelSelector stage="beats" />
+                            <button
+                              onClick={handleGenerateBeats}
+                              disabled={isGenerating || (!activeIdea.outline && !volumeContent)}
+                              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors flex items-center disabled:opacity-50"
+                            >
+                              {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                              一键生成全书细纲
+                            </button>
                           </div>
                         </div>
-                      </div>
-                      {/* Volume Content Input */}
-                      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-6">
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="text-sm font-medium text-gray-400">本卷剧情大纲</label>
-                          {activeIdea.volumes && activeIdea.volumes.length > 0 && (
-                            <select
-                              onChange={(e) => {
-                                const vol = activeIdea.volumes?.find(v => v.id === e.target.value);
-                                if (vol) setVolumeContent(vol.summary);
-                              }}
-                              className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1"
-                            >
-                              <option value="">选择分卷导入...</option>
-                              {activeIdea.volumes.map(v => (
-                                <option key={v.id} value={v.id}>{v.title}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        <textarea
-                          value={volumeContent}
-                          onChange={(e) => setVolumeContent(e.target.value)}
-                          className="w-full h-40 bg-transparent border border-gray-700 rounded-md p-3 text-sm text-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all resize-none"
-                          placeholder="在此输入本卷的详细剧情大纲，AI将根据此内容拆分章节..."
-                        />
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <select
-                              value={beatsPromptId}
-                              onChange={(e) => setBeatsPromptId(e.target.value)}
-                              className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1.5 pl-3 pr-8 rounded text-xs focus:outline-none focus:border-green-500"
-                            >
-                              <option value="default">默认拆分逻辑</option>
-                              {beatsPrompts.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                            <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          </div>
-                          <ModelSelector stage="beats" />
-                        </div>
-                        <button
-                          onClick={handleSplitVolume}
-                          disabled={!volumeContent.trim() || isGenerating}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm flex items-center disabled:opacity-50 transition-colors"
-                        >
-                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                          拆分 {splitChapterCount} 章
-                        </button>
-                      </div>
+                      )}
                     </div>
 
                     {/* Tabs: Current Split / History */}

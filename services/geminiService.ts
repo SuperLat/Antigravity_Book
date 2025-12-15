@@ -87,9 +87,12 @@ const callOpenAICompatible = async (
 
   if (isDeepSeek) {
     // 火山引擎特定参数: 控制思考模式
-    requestBody.thinking = {
-      type: ENABLE_DEEPSEEK_THINKING ? "enabled" : "disabled"
-    };
+    // 只有在启用时才发送 thinking 参数，否则不发送（依赖默认关闭）
+    if (ENABLE_DEEPSEEK_THINKING) {
+      requestBody.thinking = {
+        type: "enabled"
+      };
+    }
     console.log(`🧠 DeepSeek 思考模式: ${ENABLE_DEEPSEEK_THINKING ? '已启用' : '已禁用'}`);
   }
   // ------------------------------------
