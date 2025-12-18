@@ -31,11 +31,25 @@ const BeatsSplitSchema = new mongoose.Schema({
     createdAt: { type: Number, required: true }
 });
 
+const GenerationHistoryEntrySchema = new mongoose.Schema({
+    id: { type: String, required: true },
+    type: { type: String, required: true },
+    content: { type: String, required: true },
+    prompt: { type: String },
+    model: { type: String, required: true },
+    createdAt: { type: Number, required: true }
+});
+
 const IdeaSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     id: { type: String, required: true },
     title: { type: String, required: true },
     spark: { type: String, default: '' },
+    storyCore: { type: String }, // Added
+    storySynopsis: { type: String }, // Added
+    storyLength: { type: String }, // Added
+    storyGenre: { type: String }, // Added
+    storyBackground: { type: String }, // Added
     storyline: { type: String, default: '' }, // Added
     worldview: { type: String, default: '' },
     outline: { type: String, default: '' },
@@ -44,6 +58,7 @@ const IdeaSchema = new mongoose.Schema({
     beatsSplitHistory: [BeatsSplitSchema], // Added
     lastSplitChapterNum: { type: Number, default: 0 }, // Added
     linkedBookId: { type: String }, // Added
+    generationHistory: [GenerationHistoryEntrySchema], // Added
     updatedAt: { type: Number, required: true }
 }, {
     timestamps: true

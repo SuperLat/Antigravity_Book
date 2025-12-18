@@ -486,9 +486,119 @@ export const generateNovelContent = async ({
   }
 };
 
+// Helper to extract JSON from AI response
+const extractJson = (text: string): string => {
+  // 1. Try to find content within ```json ... ``` blocks
+  const markdownMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch && markdownMatch[1]) {
+    return markdownMatch[1].trim();
+  }
+
+  // 2. Try to find the first '{' and last '}'
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    return braceMatch[0].trim();
+  }
+
+  return text.trim();
+};
+
+export const generateStoryCoreAndSynopsis = async (
+  modelConfig: ModelConfig,
+  spark: string,
+  options?: {
+    length?: string;
+    genre?: string;
+    background?: string;
+  },
+  customTemplate?: string
+): Promise<{ core: string; synopsis: string }> => {
+  let finalPrompt = '';
+
+  const optionsText = `
+${options?.length ? `- 篇幅期望：${options.length === 'long' ? '长篇小说' : '短篇故事'}` : ''}
+${options?.genre ? `- 故事类型：${options.genre}` : ''}
+${options?.background ? `- 故事背景：${options.background}` : ''}
+  `.trim();
+
+  if (customTemplate) {
+    finalPrompt = customTemplate
+      .replace(/{{input}}/g, spark)
+      .replace(/{{spark}}/g, spark)
+      .replace(/{{options}}/g, optionsText);
+  } else {
+    finalPrompt = `
+      【核心脑洞/灵感】：${spark}
+      ${optionsText ? `\n【创作设定】：\n${optionsText}\n` : ''}
+      
+      请基于以上信息，提炼出故事内核（Story Core）并撰写一个故事概要（Story Synopsis）。
+      
+      要求：
+      1. 故事内核：用一句话或简短的几句话描述故事最深层的哲学内涵、情感核心或最本质的冲突。
+      2. 故事概要：约 300-500 字，包含背景设定、主角动机、核心危机以及大致的发展方向。
+      
+      请严格以 JSON 格式返回，不要包含任何 markdown 代码块标记，格式如下：
+      {
+        "core": "故事内核内容...",
+        "synopsis": "故事概要内容..."
+      }
+    `;
+  }
+
+  const systemInstruction = "你是一个擅长提炼故事灵魂和架构大纲的小说策划。请务必只返回 JSON 数据，确保格式正确。";
+
+  try {
+    let text = '';
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json"
+        }
+      }));
+      
+      // Handle both property and method access for text
+      text = typeof response.text === 'function' ? response.text() : (response.text || "");
+    } else {
+      text = await retryWithBackoff(() => callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      ));
+    }
+
+    console.log("AI Raw Response:", text);
+
+    try {
+      const jsonStr = extractJson(text);
+      const data = JSON.parse(jsonStr);
+      
+      // Map potential different key names
+      return {
+        core: data.core || data.storyCore || data.story_core || data.内核 || "",
+        synopsis: data.synopsis || data.storySynopsis || data.story_synopsis || data.概要 || ""
+      };
+    } catch (e) {
+      console.error("Failed to parse core and synopsis JSON. Raw text:", text);
+      throw new Error("AI 返回格式错误，无法解析数据。请检查控制台输出的原始响应。");
+    }
+  } catch (error) {
+    throw new Error(`生成故事内核与概要失败: ${(error as Error).message}`);
+  }
+};
+
 export const generateStorylineFromIdea = async (
   modelConfig: ModelConfig,
   spark: string,
+  core?: string,
+  synopsis?: string,
   customTemplate?: string
 ): Promise<string> => {
   let finalPrompt = '';
@@ -496,12 +606,16 @@ export const generateStorylineFromIdea = async (
   if (customTemplate) {
     finalPrompt = customTemplate
       .replace(/{{input}}/g, spark)
-      .replace(/{{spark}}/g, spark);
+      .replace(/{{spark}}/g, spark)
+      .replace(/{{core}}/g, core || '')
+      .replace(/{{synopsis}}/g, synopsis || '');
   } else {
     finalPrompt = `
-      【核心梗/脑洞】：${spark}
+      【原始灵感】：${spark}
+      ${core ? `【故事内核】：${core}` : ''}
+      ${synopsis ? `【故事概要】：${synopsis}` : ''}
       
-      请基于这个核心脑洞，梳理出一条清晰、完整的故事线（Storyline）。
+      请基于以上信息，梳理出一条清晰、完整的故事线（Storyline）。
       
       要求：
       1. 明确故事的主角及其核心目标。
@@ -639,16 +753,69 @@ export const generateWorldviewFromIdea = async (
           maxOutputTokens: 2048,
         }
       }));
-      return response.text || "未能生成世界观。";
+      return typeof response.text === 'function' ? response.text() : (response.text || "");
     } else {
-      return await callOpenAICompatible(
-        modelConfig,
-        [{ role: 'user', content: finalPrompt }],
-        systemInstruction
-      );
+      return await callOpenAICompatible(modelConfig, [{ role: 'user', content: finalPrompt }], systemInstruction);
     }
   } catch (error) {
     throw new Error(`生成失败: ${(error as Error).message}`);
+  }
+};
+
+export const generateDetailedWorldview = async (
+  modelConfig: ModelConfig,
+  context: {
+    storyLength?: string;
+    core?: string;
+    synopsis?: string;
+    genre?: string;
+    background?: string;
+  },
+  customTemplate?: string
+): Promise<string> => {
+  const lengthLabel = context.storyLength === 'short' ? '短篇故事' : '长篇小说';
+  
+  const prompt = customTemplate
+    ? customTemplate.replace('{{storyLength}}', lengthLabel)
+    : `
+      基于以下故事信息，设计一个详细且逻辑自洽的世界观背景。
+      
+      【故事篇幅】：${lengthLabel}
+      【故事内核】：${context.core || '未设定'}
+      【故事概要】：${context.synopsis || '未设定'}
+      【初步设定】：类型：${context.genre || '未指定'}，基础背景：${context.background || '未指定'}
+      
+      要求包含以下内容：
+      1. 地理环境与风貌：故事发生的空间设定。
+      2. 力量/技术体系：世界运行的核心逻辑（如修仙等级、科技水平、魔法法则等）。
+      3. 社会结构：核心阶层矛盾、政权形式或主要的社会组织。
+      4. 核心冲突源：导致故事发生的深层世界观诱因。
+      
+      请使用结构清晰的 Markdown 格式输出。
+    `;
+
+  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请为小说构建宏大且逻辑自洽的世界观。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction,
+          temperature: 0.9,
+          maxOutputTokens: 2048,
+        }
+      }));
+      return typeof response.text === 'function' ? response.text() : (response.text || "");
+    } else {
+      return await callOpenAICompatible(modelConfig, [{ role: 'user', content: prompt }], systemInstruction);
+    }
+  } catch (error) {
+    throw new Error(`生成世界观失败: ${(error as Error).message}`);
   }
 };
 

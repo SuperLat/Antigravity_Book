@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Cpu, Palette, Save, Monitor, ShieldCheck, Server, Plus, Trash2, Check, Zap, Eye, EyeOff } from 'lucide-react';
+import { X, Cpu, Palette, Save, Monitor, ShieldCheck, Server, Plus, Trash2, Check, Zap, Eye, EyeOff, List, Globe } from 'lucide-react';
 import { AppSettings, AIProvider, ModelConfig } from '../types';
 import { testModelConfig } from '../services/geminiService';
 
@@ -16,7 +16,7 @@ const RECOMMENDED_MODELS = [
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'appearance'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'appearance' | 'content'>('models');
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
     localSettings.defaultModelId || localSettings.models?.[0]?.id || null
@@ -24,6 +24,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   const [testingModel, setTestingModel] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // New state for adding items
+  const [newGenre, setNewGenre] = useState('');
+  const [newBackground, setNewBackground] = useState('');
 
   if (!isOpen) return null;
 
@@ -125,6 +129,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
     }));
   };
 
+  // Content Management Handlers
+  const handleAddGenre = () => {
+    if (!newGenre.trim()) return;
+    if (localSettings.genres?.includes(newGenre.trim())) {
+      alert('该类型已存在');
+      return;
+    }
+    setLocalSettings(prev => ({
+      ...prev,
+      genres: [...(prev.genres || []), newGenre.trim()]
+    }));
+    setNewGenre('');
+  };
+
+  const handleDeleteGenre = (genre: string) => {
+    if (confirm(`确定要删除类型“${genre}”吗？`)) {
+      setLocalSettings(prev => ({
+        ...prev,
+        genres: prev.genres?.filter(g => g !== genre)
+      }));
+    }
+  };
+
+  const handleAddBackground = () => {
+    if (!newBackground.trim()) return;
+    if (localSettings.backgrounds?.includes(newBackground.trim())) {
+      alert('该背景已存在');
+      return;
+    }
+    setLocalSettings(prev => ({
+      ...prev,
+      backgrounds: [...(prev.backgrounds || []), newBackground.trim()]
+    }));
+    setNewBackground('');
+  };
+
+  const handleDeleteBackground = (bg: string) => {
+    if (confirm(`确定要删除背景“${bg}”吗？`)) {
+      setLocalSettings(prev => ({
+        ...prev,
+        backgrounds: prev.backgrounds?.filter(b => b !== bg)
+      }));
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
@@ -152,6 +201,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             >
               <Cpu className="w-4 h-4 mr-3" />
               模型管理
+            </button>
+            <button
+              onClick={() => setActiveTab('content')}
+              className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'content'
+                ? 'bg-indigo-600 text-white'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                }`}
+            >
+              <List className="w-4 h-4 mr-3" />
+              基础数据
             </button>
             <button
               onClick={() => setActiveTab('appearance')}
@@ -413,6 +472,95 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                   )}
                 </div>
               </>
+            )}
+
+            {/* Content Management */}
+            {activeTab === 'content' && (
+              <div className="flex-1 p-8 overflow-y-auto custom-scrollbar bg-gray-900">
+                <div className="space-y-8 max-w-4xl">
+                  {/* Genres Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white flex items-center">
+                      <List className="w-5 h-5 mr-2 text-indigo-400" />
+                      故事类型 (Genres)
+                    </h3>
+                    <p className="text-sm text-gray-400">管理在灵感实验室中可选的故事类型。</p>
+                    
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={newGenre}
+                        onChange={(e) => setNewGenre(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddGenre()}
+                        placeholder="输入新类型..."
+                        className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-gray-200 focus:outline-none focus:border-indigo-500"
+                      />
+                      <button 
+                        onClick={handleAddGenre}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+                      >
+                        添加
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {localSettings.genres?.map(genre => (
+                        <div key={genre} className="bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-2 py-1.5 flex items-center text-sm text-gray-300 group">
+                          {genre}
+                          <button 
+                            onClick={() => handleDeleteGenre(genre)}
+                            className="ml-2 p-1 text-gray-500 hover:text-red-400 rounded-full hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-800 my-8"></div>
+
+                  {/* Backgrounds Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white flex items-center">
+                      <Globe className="w-5 h-5 mr-2 text-green-400" />
+                      故事背景 (Backgrounds)
+                    </h3>
+                    <p className="text-sm text-gray-400">管理在灵感实验室中可选的故事背景。</p>
+                    
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={newBackground}
+                        onChange={(e) => setNewBackground(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddBackground()}
+                        placeholder="输入新背景..."
+                        className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-4 py-2 text-gray-200 focus:outline-none focus:border-indigo-500"
+                      />
+                      <button 
+                        onClick={handleAddBackground}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+                      >
+                        添加
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {localSettings.backgrounds?.map(bg => (
+                        <div key={bg} className="bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-2 py-1.5 flex items-center text-sm text-gray-300 group">
+                          {bg}
+                          <button 
+                            onClick={() => handleDeleteBackground(bg)}
+                            className="ml-2 p-1 text-gray-500 hover:text-red-400 rounded-full hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Appearance Settings */}

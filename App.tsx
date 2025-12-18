@@ -41,7 +41,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     theme: 'dark',
     fontSize: 'medium',
     immersiveMode: false
-  }
+  },
+  genres: ['玄幻', '奇幻', '仙侠', '武侠', '科幻', '悬疑', '都市', '历史', '游戏', '轻小说'],
+  backgrounds: ['东方玄幻', '西方奇幻', '赛博朋克', '废土末世', '现代都市', '古代架空', '星际文明', '克苏鲁', '蒸汽朋克']
 };
 
 // Helper for lazy loading
@@ -59,7 +61,15 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
 
 // Migration helper: Convert old AIConfig to new ModelConfig array
 const migrateSettings = (settings: AppSettings): AppSettings => {
-  // If already migrated, return as-is
+  // Ensure genres and backgrounds exist
+  if (!settings.genres) {
+    settings.genres = DEFAULT_SETTINGS.genres;
+  }
+  if (!settings.backgrounds) {
+    settings.backgrounds = DEFAULT_SETTINGS.backgrounds;
+  }
+
+  // If already migrated models, return
   if (settings.models && settings.defaultModelId) {
     return settings;
   }
@@ -342,16 +352,20 @@ const App: React.FC = () => {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       title: '新灵感项目',
       spark: '',
+      storyCore: '',
+      storySynopsis: '',
+      storyLength: 'long',
+      storyGenre: '',
+      storyBackground: '',
       worldview: '',
       outline: '',
       chapterBeats: [],
-      updatedAt: Date.now()
     };
     setIdeas(prev => [newIdea, ...prev]);
   };
 
   const handleUpdateIdea = (id: string, updates: Partial<IdeaProject>) => {
-    setIdeas(prev => prev.map(i => i.id === id ? { ...i, ...updates, updatedAt: Date.now() } : i));
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
   };
 
   const handleDeleteIdea = async (id: string) => {
@@ -379,6 +393,30 @@ const App: React.FC = () => {
         description: '作品的初始灵感来源',
         tags: ['灵感', '核心梗'],
         content: idea.spark
+      });
+    }
+
+    // 1.1 Story Core
+    if (idea.storyCore) {
+      newEntities.push({
+        id: Date.now() + '_core',
+        type: EntityType.IDEA,
+        name: '故事内核 (Core)',
+        description: '故事最深层的哲学内涵或情感核心',
+        tags: ['内核', '灵感'],
+        content: idea.storyCore
+      });
+    }
+
+    // 1.2 Story Synopsis
+    if (idea.storySynopsis) {
+      newEntities.push({
+        id: Date.now() + '_synopsis',
+        type: EntityType.PLOT,
+        name: '故事概要 (Synopsis)',
+        description: '故事的背景设定和发展方向',
+        tags: ['概要', '大纲'],
+        content: idea.storySynopsis
       });
     }
 

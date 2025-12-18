@@ -71,6 +71,16 @@ export interface BeatsSplit {
   createdAt: number;
 }
 
+// 通用生成历史记录
+export interface GenerationHistoryEntry {
+  id: string;
+  type: 'spark' | 'story' | 'world' | 'outline' | 'volume' | 'beats' | 'chapter';
+  content: string; // 生成的主要内容
+  prompt?: string; // 使用的提示词 (Optional)
+  model: string; // 使用的模型
+  createdAt: number;
+}
+
 export interface Part {
   id: string;
   title: string;
@@ -90,6 +100,11 @@ export interface IdeaProject {
   id: string;
   title: string;
   spark: string;
+  storyCore?: string; // 新增：故事内核
+  storySynopsis?: string; // 新增：故事概要
+  storyLength?: 'short' | 'long'; // 新增：篇幅
+  storyGenre?: string; // 新增：类型
+  storyBackground?: string; // 新增：背景
   storyline?: string; // 新增：故事线
   worldview: string; // Keep for compatibility, or repurpose
   outline: string;
@@ -98,6 +113,7 @@ export interface IdeaProject {
   beatsSplitHistory?: BeatsSplit[];
   lastSplitChapterNum?: number;
   linkedBookId?: string; // ID of the actual book project this idea is linked to
+  generationHistory?: GenerationHistoryEntry[]; // 新增：生成历史
 }
 
 // --- Settings Interfaces ---
@@ -140,4 +156,6 @@ export interface AppSettings {
   models?: ModelConfig[];
   defaultModelId?: string;
   appearance: AppearanceConfig;
+  genres?: string[]; // 新增：全局故事类型
+  backgrounds?: string[]; // 新增：全局故事背景
 }

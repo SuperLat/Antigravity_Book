@@ -1,12 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter } from '../types';
+import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry } from '../types';
 import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload } from 'lucide-react';
-import { generateWorldviewFromIdea, generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline } from '../services/geminiService';
-
-// ... (imports)
-
-// ... (inside component)
+import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview } from '../services/geminiService';
 
 const handleGenerateBeats = async () => {
   // ... (existing code)
@@ -43,7 +38,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   onPushChapters
 }) => {
   const [activeIdeaId, setActiveIdeaId] = useState<string | null>(ideas[0]?.id || null);
-  const [activeStage, setActiveStage] = useState<'spark' | 'plot' | 'volume' | 'beats'>('spark');
+  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot' | 'volume' | 'beats'>('spark');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
@@ -110,6 +105,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // Selected Prompts State
   const [sparkPromptId, setSparkPromptId] = useState<string>('default');
+  const [corePromptId, setCorePromptId] = useState<string>('default');
   const [storyPromptId, setStoryPromptId] = useState<string>('default'); // Storyline -> Outline
   const [worldPromptId, setWorldPromptId] = useState<string>('default'); // Actually used for Outline generation
   const [outlinePromptId, setOutlinePromptId] = useState<string>('default'); // Used for re-generating Outline
@@ -151,6 +147,83 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const outlinePrompts = prompts.filter(p => p.category === 'outline');
   const beatsPrompts = prompts.filter(p => p.category === 'beats');
 
+  const handleGenerateCoreAndSynopsis = async () => {
+    if (!activeIdea || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const customTemplate = corePromptId !== 'default' ? prompts.find(p => p.id === corePromptId)?.template : undefined;
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.spark };
+
+      const result = await generateStoryCoreAndSynopsis(
+        tempConfig, 
+        activeIdea.spark, 
+        {
+          length: activeIdea.storyLength,
+          genre: activeIdea.storyGenre,
+          background: activeIdea.storyBackground
+        },
+        customTemplate
+      );
+
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'spark',
+        content: `【故事内核】\n${result.core}\n\n【故事概要】\n${result.synopsis}`,
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        storyCore: result.core, 
+        storySynopsis: result.synopsis,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateDetailedBackground = async () => {
+    if (!activeIdea || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.spark };
+
+      const result = await generateDetailedWorldview(tempConfig, {
+        storyLength: activeIdea.storyLength,
+        core: activeIdea.storyCore,
+        synopsis: activeIdea.storySynopsis,
+        genre: activeIdea.storyGenre,
+        background: activeIdea.storyBackground
+      });
+
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'world',
+        content: result,
+        prompt: undefined, // Detailed worldview uses internal complex prompts usually, or add if passed
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        worldview: result,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleGenerateStoryline = async () => {
     if (!activeIdea || isGenerating) return;
     setIsGenerating(true);
@@ -160,8 +233,27 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.spark };
 
-      const result = await generateStorylineFromIdea(tempConfig, activeIdea.spark, customTemplate);
-      onUpdateIdea(activeIdea.id, { storyline: result });
+      const result = await generateStorylineFromIdea(
+        tempConfig, 
+        activeIdea.spark, 
+        activeIdea.storyCore, 
+        activeIdea.storySynopsis, 
+        customTemplate
+      );
+
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'story',
+        content: result,
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        storyline: result,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -179,7 +271,20 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
 
       const result = await generateOutlineFromStoryline(tempConfig, activeIdea.storyline, customTemplate);
-      onUpdateIdea(activeIdea.id, { outline: result });
+      
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'outline',
+        content: result,
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        outline: result,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
       setActiveStage('plot');
     } catch (e) {
       alert((e as Error).message);
@@ -199,7 +304,20 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const tempConfig = { ...defaultModel, modelName: stageModels.plot };
 
       const result = await generateOutlineFromWorldview(tempConfig, activeIdea.worldview, activeIdea.spark, customTemplate);
-      onUpdateIdea(activeIdea.id, { outline: result });
+      
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'outline',
+        content: result,
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        outline: result,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -225,7 +343,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         order: idx + 1
       }));
 
-      onUpdateIdea(activeIdea.id, { volumes: newVolumes });
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'volume',
+        content: `【分卷生成】\n共生成 ${newVolumes.length} 卷\n` + newVolumes.map(v => `${v.title}: ${v.summary}`).join('\n'),
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        volumes: newVolumes,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
       if (newVolumes.length > 0) {
         setActiveVolumeId(newVolumes[0].id);
       }
@@ -261,7 +391,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         v.id === activeVolumeId ? { ...v, parts: newParts } : v
       );
 
-      onUpdateIdea(activeIdea.id, { volumes: updatedVolumes });
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'volume',
+        content: `【分卷细化】\n卷ID: ${activeVol.title}\n` + newParts.map(p => `${p.title}: ${p.summary}`).join('\n'),
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        volumes: updatedVolumes,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
       if (newParts.length > 0) {
         setActivePartId(newParts[0].id);
       }
@@ -317,10 +459,21 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       };
       
       const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
+
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'beats',
+        content: `【全书细纲拆分】\n共生成 ${result.length} 章`,
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
       onUpdateIdea(activeIdea.id, { 
         chapterBeats: result, 
         beatsSplitHistory: updatedHistory,
-        lastSplitChapterNum: result.length 
+        lastSplitChapterNum: result.length,
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
 
       setCurrentSplit(newSplit);
@@ -392,11 +545,21 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
       const lastChapterNum = startChapter + beats.length - 1;
 
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'beats',
+        content: `【局部细纲拆分】\n起始章节: ${startChapter}\n生成章数: ${beats.length}\n输入内容摘要: ${volumeContent.slice(0, 100)}...`,
+        prompt: customTemplate,
+        model: modelConfig.modelName,
+        createdAt: Date.now()
+      };
+
       // Update idea with new split history and cumulative beats
       onUpdateIdea(activeIdea.id, {
         beatsSplitHistory: updatedHistory,
         lastSplitChapterNum: lastChapterNum,
-        chapterBeats: [...(activeIdea.chapterBeats || []), ...beats]
+        chapterBeats: [...(activeIdea.chapterBeats || []), ...beats],
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
 
       setCurrentSplit(newSplit);
@@ -431,6 +594,31 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       // If strict sync is needed, we'd need to filter chapterBeats too. 
       // For now, let's keep it simple as a history log management.
     });
+  };
+
+  // Helper for Prompt Selector UI
+  const PromptSelector = ({ category, value, onChange }: { category: string, value: string, onChange: (id: string) => void }) => {
+    const categoryPrompts = prompts.filter(p => p.category === category);
+    
+    return (
+      <div className="relative group">
+        <Wand2 className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none" />
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-8 w-32 focus:outline-none focus:border-purple-500 hover:border-gray-600 transition-colors truncate cursor-pointer"
+          title="选择提示词模板"
+        >
+          <option value="default">默认模板</option>
+          {categoryPrompts.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+      </div>
+    );
   };
 
   // Helper for Model Selector UI
@@ -549,699 +737,497 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             </div>
           </div>
 
-          {/* Stages Navigation */}
-          <div className="flex border-b border-gray-800 px-8">
-            <button
-              onClick={() => setActiveStage('spark')}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'spark'
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <Lightbulb className="w-4 h-4 mr-2" />
-              1. 灵感 (Spark)
-            </button>
-            <button
-              onClick={() => setActiveStage('plot')}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'plot'
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <List className="w-4 h-4 mr-2" />
-              2. 剧情大纲 (Plot)
-            </button>
-            <button
-              onClick={() => setActiveStage('volume')}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'volume'
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <List className="w-4 h-4 mr-2" />
-              3. 卷纲 (Volume)
-            </button>
-            <button
-              onClick={() => setActiveStage('beats')}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeStage === 'beats'
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              4. 章节细纲 (Beats)
-            </button>
+          {/* Stage Tabs */}
+          <div className="flex border-b border-gray-800 bg-gray-900/10 px-4">
+            {[
+              { id: 'spark', label: '灵感', icon: Lightbulb },
+              { id: 'world', label: '世界观', icon: Globe },
+              { id: 'plot', label: '大纲', icon: ArrowRight },
+              { id: 'volume', label: '分卷', icon: List },
+              { id: 'beats', label: '细纲', icon: FileText },
+            ].map(stage => (
+              <button
+                key={stage.id}
+                onClick={() => setActiveStage(stage.id as any)}
+                className={`flex items-center px-6 py-4 border-b-2 transition-all ${activeStage === stage.id
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
+                  : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                  }`}
+              >
+                <stage.icon className="w-4 h-4 mr-2" />
+                <span className="font-medium">{stage.label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Stage Content */}
-          <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-8">
-
-              {/* STAGE 1: SPARK */}
-              {activeStage === 'spark' && (
-                <div className="space-y-6 animate-fadeIn">
-                  {/* Part 1: Brainstorm */}
-                  <div className="bg-yellow-900/10 border border-yellow-500/30 p-6 rounded-lg">
-                    <h3 className="text-lg font-bold text-yellow-400 mb-2 flex items-center">
-                      <Lightbulb className="w-5 h-5 mr-2" /> 1. 核心梗 / 脑洞
+          {/* Tab Content */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {activeStage === 'spark' && (
+              <div className="p-8 max-w-5xl mx-auto space-y-8">
+                {/* Spark Input */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
+                      核心灵感 (Spark)
                     </h3>
-                    <p className="text-sm text-gray-400 mb-4">
-                      在这里写下你的核心创意。例如：“赛博朋克背景下的修仙故事，核心是义体飞升”。
-                    </p>
-                    <textarea
-                      value={activeIdea.spark}
-                      onChange={(e) => onUpdateIdea(activeIdea.id, { spark: e.target.value })}
-                      className="w-full h-32 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-200 focus:ring-2 focus:ring-yellow-500 outline-none resize-none"
-                      placeholder="输入你的灵感..."
-                    />
-                    <div className="flex justify-end items-center gap-4 mt-4">
-                      {/* Prompt Selector 1 */}
-                      <div className="relative">
-                        <select
-                          value={sparkPromptId}
-                          onChange={(e) => setSparkPromptId(e.target.value)}
-                          className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2 pl-3 pr-8 rounded text-sm focus:outline-none focus:border-yellow-500 hover:border-gray-600"
-                        >
-                          <option value="default">默认: 生成故事线</option>
-                          {brainstormPrompts.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-
+                    <div className="flex items-center gap-3">
+                      <PromptSelector 
+                        category="brainstorm" 
+                        value={corePromptId} 
+                        onChange={setCorePromptId} 
+                      />
                       <ModelSelector stage="spark" />
+                      <button
+                        onClick={handleGenerateCoreAndSynopsis}
+                        disabled={isGenerating || !activeIdea.spark.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                      >
+                        {isGenerating ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-4 h-4 mr-2" />
+                        )}
+                        生成故事内核
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={activeIdea.spark}
+                    onChange={(e) => onUpdateIdea(activeIdea.id, { spark: e.target.value })}
+                    placeholder="输入一个核心脑洞、一句歌词、一个画面或是一个模糊的设想..."
+                    className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                  />
 
+                  {/* Story Options */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">故事篇幅</label>
+                      <select
+                        value={activeIdea.storyLength || 'long'}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { storyLength: e.target.value as 'short' | 'long' })}
+                        className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50"
+                      >
+                        <option value="long">长篇小说 (Long)</option>
+                        <option value="short">短篇故事 (Short)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">故事类型</label>
+                      <select
+                        value={activeIdea.storyGenre || ''}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { storyGenre: e.target.value })}
+                        className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50"
+                      >
+                        <option value="">请选择类型...</option>
+                        {settings.genres?.map(genre => (
+                          <option key={genre} value={genre}>{genre}</option>
+                        ))}
+                        {activeIdea.storyGenre && !settings.genres?.includes(activeIdea.storyGenre) && (
+                          <option value={activeIdea.storyGenre}>{activeIdea.storyGenre} (自定义)</option>
+                        )}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">故事背景</label>
+                      <select
+                        value={activeIdea.storyBackground || ''}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { storyBackground: e.target.value })}
+                        className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50"
+                      >
+                        <option value="">请选择背景...</option>
+                        {settings.backgrounds?.map(bg => (
+                          <option key={bg} value={bg}>{bg}</option>
+                        ))}
+                        {activeIdea.storyBackground && !settings.backgrounds?.includes(activeIdea.storyBackground) && (
+                          <option value={activeIdea.storyBackground}>{activeIdea.storyBackground} (自定义)</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="flex flex-col gap-8">
+                  {/* Story Core */}
+                  <section className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <Cpu className="w-5 h-5 mr-2 text-purple-400" />
+                      故事内核 (Core)
+                    </h3>
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative group">
+                      <textarea
+                        value={activeIdea.storyCore || ''}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { storyCore: e.target.value })}
+                        placeholder="生成的内核将显示在这里..."
+                        className="w-full h-32 bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                      />
+                      {!activeIdea.storyCore && !isGenerating && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
+                           <Lightbulb className="w-12 h-12" />
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* Story Synopsis */}
+                  <section className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <History className="w-5 h-5 mr-2 text-blue-400" />
+                      故事概要 (Synopsis)
+                    </h3>
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative">
+                      <textarea
+                        value={activeIdea.storySynopsis || ''}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { storySynopsis: e.target.value })}
+                        placeholder="生成的故事概要将显示在这里..."
+                        className="w-full h-80 bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                      />
+                    </div>
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {activeStage === 'world' && (
+              <div className="p-8 max-w-5xl mx-auto space-y-8">
+                {/* Detailed Worldview/Background */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <Globe className="w-5 h-5 mr-2 text-green-400" />
+                      详细背景/世界观 (Background)
+                    </h3>
+                    <button
+                      onClick={handleGenerateDetailedBackground}
+                      disabled={isGenerating || !activeIdea.storySynopsis}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 mr-2" />
+                      )}
+                      生成详细背景
+                    </button>
+                  </div>
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative">
+                    <textarea
+                      value={activeIdea.worldview || ''}
+                      onChange={(e) => onUpdateIdea(activeIdea.id, { worldview: e.target.value })}
+                      placeholder="点击按钮生成基于内核和概要的详细世界观、力量体系、地理环境等..."
+                      className="w-full h-96 bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                    />
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {activeStage === 'plot' && (
+              <div className="p-8 max-w-5xl mx-auto space-y-8">
+                {/* Storyline Section */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <ArrowRight className="w-5 h-5 mr-2 text-green-400" />
+                      故事主线 (Storyline)
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <ModelSelector stage="spark" />
                       <button
                         onClick={handleGenerateStoryline}
-                        disabled={!activeIdea.spark || isGenerating}
-                        className="flex items-center px-6 py-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                        disabled={isGenerating || !activeIdea.spark.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
                       >
-                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                        生成故事线
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Part 2: Storyline (Visible if generated or manually added) */}
-                  {(activeIdea.storyline || activeIdea.spark) && (
-                    <div className="bg-blue-900/10 border border-blue-500/30 p-6 rounded-lg animate-fadeIn">
-                      <h3 className="text-lg font-bold text-blue-400 mb-2 flex items-center">
-                        <FileText className="w-5 h-5 mr-2" /> 2. 故事线 (Storyline)
-                      </h3>
-                      <p className="text-sm text-gray-400 mb-4">
-                        AI 生成的故事脉络。你可以对其进行修改和润色，确认无误后生成完整大纲。
-                      </p>
-                      <textarea
-                        value={activeIdea.storyline || ''}
-                        onChange={(e) => onUpdateIdea(activeIdea.id, { storyline: e.target.value })}
-                        className="w-full h-64 bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none font-serif leading-relaxed"
-                        placeholder="等待生成故事线，或直接在此输入..."
-                      />
-                      <div className="flex justify-end items-center gap-4 mt-4">
-                        {/* Prompt Selector 2 */}
-                        <div className="relative">
-                          <select
-                            value={storyPromptId}
-                            onChange={(e) => setStoryPromptId(e.target.value)}
-                            className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2 pl-3 pr-8 rounded text-sm focus:outline-none focus:border-blue-500 hover:border-gray-600"
-                          >
-                            <option value="default">默认: 生成大纲</option>
-                            {outlinePrompts.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="w-4 h-4 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        </div>
-
-                        <ModelSelector stage="story" />
-
-                        <button
-                          onClick={handleStorylineToOutline}
-                          disabled={!activeIdea.storyline || isGenerating}
-                          className="flex items-center px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-                        >
-                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                          生成大纲
-                          <ArrowRight className="w-4 h-4 ml-2" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-
-
-              {/* STAGE 2: PLOT */}
-              {activeStage === 'plot' && (
-                <div className="flex flex-col h-full animate-fadeIn"> {/* 移除 space-y-8，并改为 flex-col h-full */}
-                  {/* Macro Outline */}
-                  <div className="flex-1 flex flex-col"> {/* 使其可以撑满 */}
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-purple-400 flex items-center">
-                        <List className="w-5 h-5 mr-2" /> 宏观大纲
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={outlinePromptId}
-                          onChange={(e) => setOutlinePromptId(e.target.value)}
-                          className="appearance-none bg-gray-800 border border-gray-700 text-gray-400 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-purple-500"
-                        >
-                          <option value="default">默认重成逻辑</option>
-                          {outlinePrompts.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={handleGenerateOutline}
-                          disabled={isGenerating}
-                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center"
-                        >
-                          <Wand2 className="w-3 h-3 mr-1" /> 重新生成
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      value={activeIdea.outline}
-                      onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
-                      className="w-full flex-1 min-h-[800px] bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-purple-500 outline-none resize-none font-serif"
-                      placeholder="大纲生成区..."
-                    />
-                  </div>
-                </div>
-              )}
-
-
-              {/* STAGE 4: VOLUME */}
-              {activeStage === 'volume' && (
-                <div className="max-w-4xl mx-auto space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-white flex items-center">
-                      <List className="w-5 h-5 mr-2 text-yellow-500" />
-                      分卷大纲 (Volume Outline)
-                    </h3>
-                    <div className="flex items-center gap-4">
-                      <ModelSelector stage="volume" />
-                      <button
-                        onClick={handleGenerateVolumes}
-                        disabled={isGenerating || !activeIdea.outline}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-sm font-medium transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                        生成分卷
-                      </button>
-                      <button
-                        onClick={() => {
-                          const newVol = { id: Date.now().toString(), title: '新分卷', summary: '', order: (activeIdea.volumes?.length || 0) + 1 };
-                          const newVolumes = [...(activeIdea.volumes || []), newVol];
-                          onUpdateIdea(activeIdea.id, { volumes: newVolumes });
-                          setActiveVolumeId(newVol.id);
-                        }}
-                        className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md text-sm font-medium transition-colors flex items-center"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        添加分卷
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-6 h-[600px]">
-                    {/* Left: Volume List */}
-                    <div className="col-span-1 bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden flex flex-col">
-                      <div className="p-3 border-b border-gray-800 font-medium text-gray-400 text-sm">
-                        卷列表
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                        {activeIdea.volumes && activeIdea.volumes.length > 0 ? (
-                          activeIdea.volumes.map((vol, idx) => (
-                            <div
-                              key={vol.id}
-                              onClick={() => setActiveVolumeId(vol.id)}
-                              className={`p-3 rounded cursor-pointer transition-colors border ${activeVolumeId === vol.id
-                                ? 'bg-indigo-900/30 border-indigo-500/50 text-white'
-                                : 'bg-gray-800/30 border-transparent text-gray-400 hover:bg-gray-800'
-                                }`}
-                            >
-                              <div className="font-medium text-sm truncate">{vol.title}</div>
-                              <div className="text-xs text-gray-500 mt-1 truncate">{vol.summary}</div>
-                            </div>
-                          ))
+                        {isGenerating ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         ) : (
-                          <div className="text-center py-8 text-gray-600 text-sm">
-                            暂无分卷，请点击生成或添加
-                          </div>
+                          <Wand2 className="w-4 h-4 mr-2" />
                         )}
-                      </div>
-                    </div>
-
-                    {/* Right: Volume Detail */}
-                    <div className="col-span-2 bg-gray-900/50 border border-gray-800 rounded-lg flex flex-col overflow-hidden">
-                      {activeVolumeId ? (
-                        (() => {
-                          const activeVol = activeIdea.volumes?.find(v => v.id === activeVolumeId);
-                          if (!activeVol) return null;
-                          return (
-                            <div className="flex flex-col h-full">
-                              <div className="p-4 border-b border-gray-800 flex items-center gap-4">
-                                <input
-                                  value={activeVol.title}
-                                  onChange={(e) => {
-                                    const updated = activeIdea.volumes!.map(v => v.id === activeVol.id ? { ...v, title: e.target.value } : v);
-                                    onUpdateIdea(activeIdea.id, { volumes: updated });
-                                  }}
-                                  className="bg-transparent text-lg font-bold text-white focus:outline-none flex-1"
-                                  placeholder="卷标题"
-                                />
-                                <button
-                                  onClick={() => {
-                                    if (!window.confirm('确定删除此卷吗？')) return;
-                                    const updated = activeIdea.volumes!.filter(v => v.id !== activeVol.id);
-                                    onUpdateIdea(activeIdea.id, { volumes: updated });
-                                    setActiveVolumeId(updated[0]?.id || null);
-                                  }}
-                                  className="text-gray-500 hover:text-red-400"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                              <textarea
-                                value={activeVol.summary}
-                                onChange={(e) => {
-                                  const updated = activeIdea.volumes!.map(v => v.id === activeVol.id ? { ...v, summary: e.target.value } : v);
-                                  onUpdateIdea(activeIdea.id, { volumes: updated });
-                                }}
-                                className="flex-1 bg-transparent p-4 text-gray-300 resize-none focus:outline-none leading-relaxed custom-scrollbar"
-                                placeholder="在此输入本卷的详细大纲..."
-                              />
-                              <div className="p-4 border-t border-gray-800 flex justify-end">
-                                <button
-                                  onClick={() => {
-                                    setVolumeContent(activeVol.summary);
-                                    setActiveStage('beats');
-                                  }}
-                                  className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-md text-sm font-medium transition-colors"
-                                >
-                                  <ArrowRight className="w-4 h-4 mr-2" />
-                                  拆分此卷细纲
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          请选择一个分卷
-                        </div>
-                      )}
+                        生成故事线
+                      </button>
                     </div>
                   </div>
-                </div>
-              )}
+                  <textarea
+                    value={activeIdea.storyline || ''}
+                    onChange={(e) => onUpdateIdea(activeIdea.id, { storyline: e.target.value })}
+                    placeholder="在这里描述故事的起承转合..."
+                    className="w-full h-48 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                  />
+                </section>
 
-              {/* STAGE 4: BEATS */}
-              {activeStage === 'beats' && (
-                <div className="space-y-6 animate-fadeIn">
-                  {/* Chapter Beats - Volume Split */}
-                  <div>
-                    <h3 className="text-lg font-bold text-green-400 flex items-center mb-6">
-                      <FileText className="w-5 h-5 mr-2" /> 章节细纲拆分
+                {/* Full Outline Section */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                      <Globe className="w-5 h-5 mr-2 text-indigo-400" />
+                      全书大纲 (Outline)
                     </h3>
+                    <div className="flex items-center gap-3">
+                      <ModelSelector stage="story" />
+                      <button
+                        onClick={handleStorylineToOutline}
+                        disabled={isGenerating || !activeIdea.storyline}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                      >
+                        {isGenerating ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-4 h-4 mr-2" />
+                        )}
+                        生成详细大纲
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={activeIdea.outline || ''}
+                    onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
+                    placeholder="详细的三幕式大纲或卷纲..."
+                    className="w-full h-96 bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                  />
+                </section>
+              </div>
+            )}
+            {activeStage === 'volume' && (
+              <div className="p-8 max-w-5xl mx-auto space-y-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-bold text-white flex items-center">
+                      <List className="w-6 h-6 mr-2 text-indigo-400" />
+                      分卷规划
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">将大纲拆分为具体的卷和部</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ModelSelector stage="volume" />
+                    <button
+                      onClick={handleGenerateVolumes}
+                      disabled={isGenerating || !activeIdea.outline}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all"
+                    >
+                      {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                      智能拆卷
+                    </button>
+                  </div>
+                </div>
 
-                    {/* Linked Book Context Option */}
-                    {activeIdea.linkedBookId && (
-                      <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-lg mb-6 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <LinkIcon className="w-5 h-5 text-indigo-400" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Volume List */}
+                  <div className="md:col-span-1 space-y-3">
+                    {activeIdea.volumes?.map((vol) => (
+                      <button
+                        key={vol.id}
+                        onClick={() => setActiveVolumeId(vol.id)}
+                        className={`w-full text-left p-4 rounded-xl border transition-all ${activeVolumeId === vol.id
+                          ? 'bg-indigo-600/10 border-indigo-500/50 text-indigo-400'
+                          : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                          }`}
+                      >
+                        <div className="text-xs opacity-50 mb-1">第 {vol.order} 卷</div>
+                        <div className="font-bold truncate">{vol.title}</div>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const newVol = { id: Date.now().toString(), title: '新卷', summary: '', order: (activeIdea.volumes?.length || 0) + 1 };
+                        onUpdateIdea(activeIdea.id, { volumes: [...(activeIdea.volumes || []), newVol] });
+                        setActiveVolumeId(newVol.id);
+                      }}
+                      className="w-full p-4 rounded-xl border border-dashed border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700 flex items-center justify-center transition-all"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      添加分卷
+                    </button>
+                  </div>
+
+                  {/* Volume Detail */}
+                  <div className="md:col-span-2">
+                    {activeVolumeId ? (
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                        <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+                          <input
+                            value={activeIdea.volumes?.find(v => v.id === activeVolumeId)?.title || ''}
+                            onChange={(e) => {
+                              const updated = activeIdea.volumes?.map(v => v.id === activeVolumeId ? { ...v, title: e.target.value } : v);
+                              onUpdateIdea(activeIdea.id, { volumes: updated });
+                            }}
+                            className="bg-transparent text-xl font-bold text-white focus:outline-none w-full"
+                            placeholder="分卷标题"
+                          />
+                        </div>
+                        <div className="p-6 space-y-6">
                           <div>
-                            <div className="text-sm font-medium text-indigo-300">
-                              已关联作品: {books?.find(b => b.id === activeIdea.linkedBookId)?.title}
-                            </div>
-                            <div className="text-xs text-indigo-400/70 mt-1">
-                              开启后，AI 将读取选中章节的内容作为前情提要，使生成的细纲更连贯。
-                            </div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">本卷概要</label>
+                            <textarea
+                              value={activeIdea.volumes?.find(v => v.id === activeVolumeId)?.summary || ''}
+                              onChange={(e) => {
+                                const updated = activeIdea.volumes?.map(v => v.id === activeVolumeId ? { ...v, summary: e.target.value } : v);
+                                onUpdateIdea(activeIdea.id, { volumes: updated });
+                              }}
+                              className="w-full h-48 bg-gray-950 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed"
+                              placeholder="输入本卷要讲述的核心故事..."
+                            />
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          {useLinkedBookContext && (
-                            <div className="relative">
-                              <button
-                                onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
-                                className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 min-w-[120px] flex items-center justify-between"
-                              >
-                                <span className="truncate max-w-[100px]">
-                                  {linkedRefChapterIds.length > 0
-                                    ? `已选 ${linkedRefChapterIds.length} 章`
-                                    : '选择参考章节'}
-                                </span>
-                                <ChevronDown className="w-3 h-3 ml-1" />
-                              </button>
-
-                              {isMultiSelectOpen && (
-                                <>
-                                  <div className="fixed inset-0 z-40" onClick={() => setIsMultiSelectOpen(false)} />
-                                  <div className="absolute top-full left-0 mt-1 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
-                                    <div className="p-2 space-y-1">
-                                      {books?.find(b => b.id === activeIdea.linkedBookId)?.chapters.map(c => (
-                                        <label key={c.id} className="flex items-center p-2 hover:bg-gray-700 rounded cursor-pointer">
-                                          <input
-                                            type="checkbox"
-                                            checked={linkedRefChapterIds.includes(c.id)}
-                                            onChange={(e) => {
-                                              if (e.target.checked) {
-                                                setLinkedRefChapterIds([...linkedRefChapterIds, c.id]);
-                                              } else {
-                                                setLinkedRefChapterIds(linkedRefChapterIds.filter(id => id !== c.id));
-                                              }
-                                            }}
-                                            className="rounded border-gray-600 text-indigo-600 focus:ring-indigo-500 mr-2"
-                                          />
-                                          <span className="text-xs text-gray-300 truncate">{c.title}</span>
-                                        </label>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          )}
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={useLinkedBookContext}
-                              onChange={(e) => setUseLinkedBookContext(e.target.checked)}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                            <span className="ml-3 text-sm font-medium text-gray-300">参考现有章节</span>
-                          </label>
-                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-2xl">
+                        <List className="w-12 h-12 mb-4 opacity-10" />
+                        <p>请选择或创建一个分卷</p>
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeStage === 'beats' && (
+              <div className="p-8 max-w-6xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-white flex items-center">
+                      <FileText className="w-6 h-6 mr-2 text-indigo-400" />
+                      细纲拆解
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">将大纲转化为具体的章节细纲</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <ModelSelector stage="beats" />
+                    <button
+                      onClick={handleGenerateBeats}
+                      disabled={isGenerating || !activeIdea.outline}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                      {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                      智能拆分章节
+                    </button>
+                  </div>
+                </div>
 
-                    {/* Volume Input Section */}
-                    <div className="bg-green-900/10 border border-green-500/30 p-6 rounded-lg mb-6">
-                      
-                      {/* Split Mode Selector */}
-                      <div className="flex items-center gap-6 mb-6 border-b border-green-500/20 pb-4">
-                        <label className="flex items-center cursor-pointer">
-                          <input
-                            type="radio"
-                            name="splitMode"
-                            value="partial"
-                            checked={splitMode === 'partial'}
-                            onChange={() => setSplitMode('partial')}
-                            className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500 focus:ring-2"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-200">部分拆分 (输入内容拆成N章)</span>
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+                  {/* Left: Input/Config Area */}
+                  <div className="xl:col-span-1 space-y-6">
+                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
+                      <div className="space-y-3">
+                        <label className="text-sm font-medium text-gray-300 flex items-center">
+                          <Plus className="w-4 h-4 mr-2 text-indigo-400" />
+                          拆分段落内容
                         </label>
-                        <label className="flex items-center cursor-pointer">
-                          <input
-                            type="radio"
-                            name="splitMode"
-                            value="full"
-                            checked={splitMode === 'full'}
-                            onChange={() => setSplitMode('full')}
-                            className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500 focus:ring-2"
-                          />
-                          <span className="ml-2 text-sm font-medium text-gray-200">全部拆分 (全书大纲一键生成)</span>
-                        </label>
+                        <textarea
+                          value={volumeContent}
+                          onChange={(e) => setVolumeContent(e.target.value)}
+                          placeholder="粘贴一段分卷大纲或剧情，将其拆分为章节..."
+                          className="w-full h-48 bg-gray-950 border border-gray-800 rounded-xl p-4 text-xs text-gray-400 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none"
+                        />
                       </div>
 
-                      {splitMode === 'partial' ? (
-                        <>
-                          <div className="flex justify-between items-center mb-4">
-                            <label className="text-sm font-medium text-green-300">输入卷大纲内容</label>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400">拆分章数：</span>
-                                <select
-                                  value={splitChapterCount}
-                                  onChange={(e) => setSplitChapterCount(Number(e.target.value))}
-                                  className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1 pl-2 pr-6 rounded text-xs focus:outline-none focus:border-green-500"
-                                >
-                                  {[2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => (
-                                    <option key={n} value={n}>{n} 章</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                下次从第 {(activeIdea.lastSplitChapterNum || 0) + 1} 章开始
-                              </div>
-                            </div>
-                          </div>
-                          {/* Volume Content Input */}
-                          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-6">
-                            <div className="flex justify-between items-center mb-2">
-                              <label className="text-sm font-medium text-gray-400">本卷剧情大纲</label>
-                              {activeIdea.volumes && activeIdea.volumes.length > 0 && (
-                                <select
+                      <div className="space-y-3">
+                        <label className="text-sm font-medium text-gray-300">拆分章数</label>
+                        <input
+                          type="number"
+                          value={splitChapterCount}
+                          onChange={(e) => setSplitChapterCount(parseInt(e.target.value))}
+                          className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500/30"
+                          min="1"
+                          max="20"
+                        />
+                      </div>
+
+                      <button
+                        onClick={handleSplitVolume}
+                        disabled={isGenerating || !volumeContent.trim()}
+                        className="w-full py-3 bg-gray-800 hover:bg-gray-750 disabled:opacity-50 text-indigo-400 rounded-xl flex items-center justify-center font-medium transition-all border border-indigo-500/20"
+                      >
+                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                        执行局部拆分
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right: Beats List */}
+                  <div className="xl:col-span-3 space-y-4">
+                    {activeIdea.chapterBeats && activeIdea.chapterBeats.length > 0 ? (
+                      <div className="space-y-4">
+                        {activeIdea.chapterBeats.map((beat, idx) => (
+                          <div key={idx} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group">
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center">
+                                <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3">
+                                  {idx + 1}
+                                </span>
+                                <input
+                                  value={beat.chapterTitle}
                                   onChange={(e) => {
-                                    const vol = activeIdea.volumes?.find(v => v.id === e.target.value);
-                                    if (vol) setVolumeContent(vol.summary);
+                                    const updated = [...activeIdea.chapterBeats!];
+                                    updated[idx] = { ...beat, chapterTitle: e.target.value };
+                                    onUpdateIdea(activeIdea.id, { chapterBeats: updated });
                                   }}
-                                  className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1"
-                                >
-                                  <option value="">选择分卷导入...</option>
-                                  {activeIdea.volumes.map(v => (
-                                    <option key={v.id} value={v.id}>{v.title}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                            <textarea
-                              value={volumeContent}
-                              onChange={(e) => setVolumeContent(e.target.value)}
-                              className="w-full h-40 bg-transparent border border-gray-700 rounded-md p-3 text-sm text-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all resize-none"
-                              placeholder="在此输入本卷的详细剧情大纲，AI将根据此内容拆分章节..."
-                            />
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              <div className="relative">
-                                <select
-                                  value={beatsPromptId}
-                                  onChange={(e) => setBeatsPromptId(e.target.value)}
-                                  className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-1.5 pl-3 pr-8 rounded text-xs focus:outline-none focus:border-green-500"
-                                >
-                                  <option value="default">默认拆分逻辑</option>
-                                  {beatsPrompts.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                  ))}
-                                </select>
-                                <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                  className="bg-transparent text-lg font-bold text-gray-200 focus:outline-none"
+                                />
                               </div>
-                              <ModelSelector stage="beats" />
-                            </div>
-                            <button
-                              onClick={handleSplitVolume}
-                              disabled={!volumeContent.trim() || isGenerating}
-                              className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm flex items-center disabled:opacity-50 transition-colors"
-                            >
-                              {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                              拆分 {splitChapterCount} 章
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        // Full Split Mode UI
-                        <div className="flex flex-col items-center justify-center py-8">
-                          <p className="text-gray-400 mb-6 text-sm text-center max-w-lg">
-                            此模式将读取上一步生成的<b>“全书大纲”</b>或<b>“分卷大纲”</b>，并自动规划全书的章节细纲。<br />
-                            (注意：这将覆盖当前的细纲列表)
-                          </p>
-                          
-                          <div className="flex items-center gap-4">
-                            <ModelSelector stage="beats" />
-                            <button
-                              onClick={handleGenerateBeats}
-                              disabled={isGenerating || (!activeIdea.outline && !volumeContent)}
-                              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors flex items-center disabled:opacity-50"
-                            >
-                              {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                              一键生成全书细纲
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Tabs: Current Split / History */}
-                    <div className="flex border-b border-gray-800 mb-4">
-                      <button
-                        onClick={() => setShowSplitHistory(false)}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${!showSplitHistory
-                          ? 'border-green-500 text-green-400'
-                          : 'border-transparent text-gray-500 hover:text-gray-300'
-                          }`}
-                      >
-                        <FileText className="w-4 h-4 inline mr-1" />
-                        本次拆分 {currentSplit && `(${currentSplit.beats.length}章)`}
-                      </button>
-                      <button
-                        onClick={() => setShowSplitHistory(true)}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${showSplitHistory
-                          ? 'border-green-500 text-green-400'
-                          : 'border-transparent text-gray-500 hover:text-gray-300'
-                          }`}
-                      >
-                        <History className="w-4 h-4 inline mr-1" />
-                        历史拆分 ({activeIdea.beatsSplitHistory?.length || 0})
-                      </button>
-                    </div>
-
-                    {/* Content */}
-                    {!showSplitHistory ? (
-                      // Current Split
-                      currentSplit ? (
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="text-xs text-gray-500">
-                              第 {currentSplit.startChapter} - {currentSplit.startChapter + currentSplit.beats.length - 1} 章
-                            </div>
-                            {/* Push Button for Current Split */}
-                            {activeIdea.linkedBookId && onPushChapters && (
                               <button
                                 onClick={() => {
-                                  const chapters = currentSplit.beats.map((beat, idx) => ({
-                                    id: Date.now() + `_c${idx}`,
-                                    title: beat.chapterTitle,
-                                    summary: beat.summary,
-                                    content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
-                                  }));
-                                  onPushChapters(activeIdea.linkedBookId!, chapters);
+                                  const updated = activeIdea.chapterBeats!.filter((_, i) => i !== idx);
+                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
                                 }}
-                                className="text-xs flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors"
+                                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                               >
-                                <Upload className="w-3 h-3" />
-                                推送到目录
+                                <Trash2 className="w-4 h-4" />
                               </button>
-                            )}
-                          </div>
-                          {currentSplit.beats.map((beat, idx) => (
-                            <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
-                              <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-white">{beat.chapterTitle}</h4>
-                                <span className="text-xs bg-green-900/30 px-2 py-1 rounded text-green-400">
-                                  第 {currentSplit.startChapter + idx} 章
-                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
+                                <textarea
+                                  value={beat.summary}
+                                  onChange={(e) => {
+                                    const updated = [...activeIdea.chapterBeats!];
+                                    updated[idx] = { ...beat, summary: e.target.value };
+                                    onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                  }}
+                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-24"
+                                />
                               </div>
-                              <p className="text-sm text-gray-400 mb-3">{beat.summary}</p>
-                              <div className="flex gap-2 text-xs flex-wrap">
-                                <div className="bg-red-900/30 text-red-300 px-2 py-1 rounded border border-red-500/20">
-                                  冲突: {beat.conflict}
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
+                                  <input
+                                    value={beat.conflict}
+                                    onChange={(e) => {
+                                      const updated = [...activeIdea.chapterBeats!];
+                                      updated[idx] = { ...beat, conflict: e.target.value };
+                                      onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                    }}
+                                    className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
+                                  />
                                 </div>
-                                {beat.keyCharacters.map(char => (
-                                  <div key={char} className="bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-500/20">
-                                    {char}
-                                  </div>
-                                ))}
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
+                                  <input
+                                    value={beat.keyCharacters.join(', ')}
+                                    onChange={(e) => {
+                                      const updated = [...activeIdea.chapterBeats!];
+                                      updated[idx] = { ...beat, keyCharacters: e.target.value.split(',').map(s => s.trim()) };
+                                      onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                    }}
+                                    className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
+                                    placeholder="逗号分隔角色名"
+                                  />
+                                </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
-                          输入卷大纲内容后点击"拆分"按钮生成章节细纲
-                        </div>
-                      )
+                          </div>
+                        ))}
+                      </div>
                     ) : (
-                      // History
-                      activeIdea.beatsSplitHistory && activeIdea.beatsSplitHistory.length > 0 ? (
-                        <div className="space-y-4">
-                          {activeIdea.beatsSplitHistory.map((split, splitIdx) => {
-                            const isExpanded = expandedHistoryIds.includes(split.id);
-                            return (
-                              <div key={split.id} className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
-                                <div
-                                  className="bg-gray-800/50 px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-gray-800 transition-colors"
-                                  onClick={() => toggleHistoryExpand(split.id)}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
-                                    <span className="text-sm font-medium text-gray-300">
-                                      第 {split.startChapter} - {split.startChapter + split.beats.length - 1} 章
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      ({split.beats.length} 章)
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                      <Clock className="w-3 h-3" />
-                                      {new Date(split.createdAt).toLocaleString()}
-                                    </div>
-                                    {/* Push Button for History Item */}
-                                    {onPushChapters && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (activeIdea.linkedBookId) {
-                                            const chapters = split.beats.map((beat, idx) => ({
-                                              id: Date.now() + `_c${idx}_${Math.random().toString(36).substr(2, 5)}`, // Ensure unique ID
-                                              title: beat.chapterTitle,
-                                              summary: beat.summary,
-                                              content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters.join(', ')}\n\n(在此开始写作...)`
-                                            }));
-                                            onPushChapters(activeIdea.linkedBookId, chapters);
-                                          } else {
-                                            if (window.confirm('当前灵感未关联作品，是否现在关联？')) {
-                                              setShowLinkModal(true);
-                                            }
-                                          }
-                                        }}
-                                        className={`flex items-center gap-1 text-xs transition-colors border px-2 py-1 rounded ${activeIdea.linkedBookId
-                                          ? 'text-indigo-400 hover:text-indigo-300 border-indigo-500/30 bg-indigo-900/20'
-                                          : 'text-gray-400 hover:text-gray-300 border-gray-600/30 bg-gray-800'
-                                          }`}
-                                        title={activeIdea.linkedBookId ? "将此记录推送到作品目录" : "关联作品后可推送"}
-                                      >
-                                        <Upload className="w-3 h-3" />
-                                        推送
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteSplit(split.id);
-                                      }}
-                                      className="text-gray-500 hover:text-red-400 transition-colors"
-                                      title="删除记录"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {isExpanded && (
-                                  <div className="p-4 space-y-3 border-t border-gray-800 animate-fadeIn">
-                                    {split.beats.map((beat, idx) => (
-                                      <div key={idx} className="bg-gray-900 border border-gray-700 rounded-lg p-3">
-                                        <div className="flex justify-between items-start mb-1">
-                                          <h4 className="font-medium text-white text-sm">{beat.chapterTitle}</h4>
-                                          <span className="text-xs text-gray-500">第 {split.startChapter + idx} 章</span>
-                                        </div>
-                                        <p className="text-xs text-gray-400">{beat.summary}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg text-gray-600">
-                          暂无历史拆分记录
-                        </div>
-                      )
+                      <div className="h-96 flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
+                        <FileText className="w-16 h-16 mb-4 opacity-10" />
+                        <p className="text-lg">暂无章节细纲</p>
+                        <p className="text-sm opacity-50 mt-1">点击上方按钮或在左侧输入内容开始拆分</p>
+                      </div>
                     )}
                   </div>
                 </div>
-              )}
-
-            </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
