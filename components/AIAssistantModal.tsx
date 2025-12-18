@@ -53,6 +53,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 }) => {
     const [promptInput, setPromptInput] = useState('');
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [showCopySuccess, setShowCopySuccess] = useState(false);
 
     // Prompt Selection State
     const [selectedCategory, setSelectedCategory] = useState<PromptCategory | ''>('');
@@ -161,9 +162,36 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     };
 
     const handleCopy = async (id: string, content: string) => {
-        await navigator.clipboard.writeText(content);
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
+        let success = false;
+        try {
+            await navigator.clipboard.writeText(content);
+            success = true;
+        } catch (err) {
+            // Fallback for older browsers or non-secure contexts
+            const textArea = document.createElement("textarea");
+            textArea.value = content;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                success = document.execCommand('copy');
+            } catch (e) {
+                console.error('Copy failed', e);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        if (success) {
+            setCopiedId(id);
+            setShowCopySuccess(true);
+            setTimeout(() => {
+                setCopiedId(null);
+                setShowCopySuccess(false);
+            }, 2000);
+        }
     };
 
     const handleRegenerate = () => {
@@ -284,6 +312,12 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
                     {/* Right Main: Chat & Controls */}
                     <div className="flex-1 flex flex-col bg-gray-950 h-2/3 md:h-full relative">
+                        {showCopySuccess && (
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[60] flex items-center bg-gray-800 text-white px-4 py-2 rounded-full shadow-xl border border-gray-700 animate-fadeIn transition-all">
+                                <Check className="w-4 h-4 mr-2 text-green-500" />
+                                <span className="text-sm font-medium">复制成功</span>
+                            </div>
+                        )}
                         {/* Header Controls */}
                         <div className="h-16 border-b border-gray-800 flex items-center justify-between px-4 gap-4 bg-gray-900/30">
                             <div className="flex items-center gap-2 flex-1">
