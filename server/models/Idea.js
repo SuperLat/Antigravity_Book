@@ -31,6 +31,18 @@ const BeatsSplitSchema = new mongoose.Schema({
     createdAt: { type: Number, required: true }
 });
 
+const CharacterProfileSchema = new mongoose.Schema({
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    role: { type: String, required: true },
+    gender: { type: String },
+    age: { type: String },
+    description: { type: String },
+    background: { type: String },
+    personality: { type: String },
+    appearance: { type: String }
+});
+
 const GenerationHistoryEntrySchema = new mongoose.Schema({
     id: { type: String, required: true },
     type: { type: String, required: true },
@@ -52,6 +64,7 @@ const IdeaSchema = new mongoose.Schema({
     storyBackground: { type: String }, // Added
     storyline: { type: String, default: '' }, // Added
     worldview: { type: String, default: '' },
+    characters: [CharacterProfileSchema], // Added
     outline: { type: String, default: '' },
     volumes: [VolumeSchema], // Added
     chapterBeats: [ChapterBeatSchema],
@@ -59,7 +72,6 @@ const IdeaSchema = new mongoose.Schema({
     lastSplitChapterNum: { type: Number, default: 0 }, // Added
     linkedBookId: { type: String }, // Added
     generationHistory: [GenerationHistoryEntrySchema], // Added
-    updatedAt: { type: Number, required: true }
 }, {
     timestamps: true
 });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry } from '../types';
-import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload } from 'lucide-react';
-import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview } from '../services/geminiService';
+import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
+import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X } from 'lucide-react';
+import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
 
 const handleGenerateBeats = async () => {
   // ... (existing code)
@@ -38,7 +38,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   onPushChapters
 }) => {
   const [activeIdeaId, setActiveIdeaId] = useState<string | null>(ideas[0]?.id || null);
-  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'plot' | 'volume' | 'beats'>('spark');
+  const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'character' | 'plot' | 'volume' | 'beats'>('spark');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
@@ -52,6 +52,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     plot: string;
     volume: string;
     beats: string;
+    character: string;
   }>(() => {
     const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
     const defaultModelName = defaultModel?.modelName || 'gemini-2.5-flash';
@@ -60,7 +61,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       story: defaultModelName,
       plot: defaultModelName,
       volume: defaultModelName,
-      beats: defaultModelName
+      beats: defaultModelName,
+      character: defaultModelName
     };
   });
 
@@ -73,6 +75,16 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [useLinkedBookContext, setUseLinkedBookContext] = useState(false);
   const [linkedRefChapterIds, setLinkedRefChapterIds] = useState<string[]>([]);
   const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
+
+  // Character Generation Config
+  const [charGenReqs, setCharGenReqs] = useState({
+    protagonist: 1,
+    antagonist: 1,
+    supporting: 2
+  });
+
+  // Character Editing State
+  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
 
   // Expanded states for history items
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
@@ -111,6 +123,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [outlinePromptId, setOutlinePromptId] = useState<string>('default'); // Used for re-generating Outline
   const [volumePromptId, setVolumePromptId] = useState<string>('default');
   const [beatsPromptId, setBeatsPromptId] = useState<string>('default');
+  const [characterPromptId, setCharacterPromptId] = useState<string>('default');
 
   const [activeVolumeId, setActiveVolumeId] = useState<string | null>(null);
 
@@ -133,6 +146,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     initDefaultPrompt('outline', setOutlinePromptId);
     initDefaultPrompt('outline', setVolumePromptId); // Use outline prompts for volume for now, or add new category
     initDefaultPrompt('beats', setBeatsPromptId);
+    initDefaultPrompt('character', setCharacterPromptId);
 
     hasInitializedPrompts.current = true;
   }, [prompts]);
@@ -224,6 +238,48 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
+  const handleGenerateCharacters = async () => {
+    if (!activeIdea || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const customTemplate = characterPromptId !== 'default' ? prompts.find(p => p.id === characterPromptId)?.template : undefined;
+      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
+      if (!defaultModel) throw new Error('没有配置模型');
+      const tempConfig = { ...defaultModel, modelName: stageModels.character };
+
+      const result = await generateCharactersFromIdea(tempConfig, {
+        spark: activeIdea.spark,
+        core: activeIdea.storyCore,
+        synopsis: activeIdea.storySynopsis,
+        worldview: activeIdea.worldview,
+        requirements: charGenReqs
+      }, customTemplate);
+
+      const newCharacters: CharacterProfile[] = result.map((c, idx) => ({
+        ...c,
+        id: Date.now().toString() + idx
+      }));
+
+      const historyEntry: GenerationHistoryEntry = {
+        id: Date.now().toString(),
+        type: 'character' as any, // Temporary cast as type might not be updated in GenerationHistoryEntry definition yet
+        content: JSON.stringify(newCharacters, null, 2),
+        prompt: customTemplate,
+        model: tempConfig.modelName,
+        createdAt: Date.now()
+      };
+
+      onUpdateIdea(activeIdea.id, { 
+        characters: [...(activeIdea.characters || []), ...newCharacters],
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleGenerateStoryline = async () => {
     if (!activeIdea || isGenerating) return;
     setIsGenerating(true);
@@ -261,8 +317,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
-  const handleStorylineToOutline = async () => {
-    if (!activeIdea || isGenerating || !activeIdea.storyline) return;
+  const handleGenerateCompleteOutline = async () => {
+    if (!activeIdea || isGenerating) return;
     setIsGenerating(true);
     try {
       const customTemplate = storyPromptId !== 'default' ? prompts.find(p => p.id === storyPromptId)?.template : undefined;
@@ -270,7 +326,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
 
-      const result = await generateOutlineFromStoryline(tempConfig, activeIdea.storyline, customTemplate);
+      // UPGRADE: Use generateCompleteOutline to fuse all contexts
+      const result = await generateCompleteOutline(
+        tempConfig, 
+        {
+          spark: activeIdea.spark,
+          core: activeIdea.storyCore,
+          synopsis: activeIdea.storySynopsis,
+          storyline: activeIdea.storyline, // Optional now
+          worldview: activeIdea.worldview,
+          characters: activeIdea.characters
+        },
+        customTemplate
+      );
       
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
@@ -336,24 +404,37 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const volumesData = await generateVolumesFromOutline(tempConfig, activeIdea.outline, customTemplate);
 
-      const newVolumes = volumesData.map((v, idx) => ({
-        id: Date.now().toString() + idx,
+      const existingVolumes = activeIdea.volumes || [];
+      const existingTitles = new Set(existingVolumes.map(v => v.title));
+      
+      const newVolumesData = volumesData.filter(v => !existingTitles.has(v.title));
+      
+      if (newVolumesData.length === 0 && volumesData.length > 0) {
+        alert("未发现新分卷内容（所有识别到的分卷标题已存在）。");
+        setIsGenerating(false);
+        return;
+      }
+
+      const newVolumes = newVolumesData.map((v, idx) => ({
+        id: Date.now().toString() + '_' + idx,
         title: v.title,
         summary: v.summary,
-        order: idx + 1
+        order: existingVolumes.length + idx + 1
       }));
+
+      const finalVolumes = [...existingVolumes, ...newVolumes];
 
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
         type: 'volume',
-        content: `【分卷生成】\n共生成 ${newVolumes.length} 卷\n` + newVolumes.map(v => `${v.title}: ${v.summary}`).join('\n'),
+        content: `【分卷提取】\n新增 ${newVolumes.length} 卷\n` + newVolumes.map(v => `${v.title}`).join('\n'),
         prompt: customTemplate,
-        model: tempConfig.modelName,
+        model: "Local Regex Extraction",
         createdAt: Date.now()
       };
 
       onUpdateIdea(activeIdea.id, { 
-        volumes: newVolumes,
+        volumes: finalVolumes,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
       if (newVolumes.length > 0) {
@@ -414,81 +495,38 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
-  const [splitMode, setSplitMode] = useState<'partial' | 'full'>('partial');
+  const [splitMode, setSplitMode] = useState<'full' | 'selection'>('full');
+  const [selectionRange, setSelectionRange] = useState<{ start: number, end: number }>({ start: 0, end: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleGenerateBeats = async () => {
-    if (!activeIdea || isGenerating) return;
-    setIsGenerating(true);
-    try {
-      const customTemplate = beatsPromptId !== 'default' ? prompts.find(p => p.id === beatsPromptId)?.template : undefined;
-      const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
-      if (!defaultModel) throw new Error('没有配置模型');
-      
-      // Determine content source based on available data
-      let sourceContent = activeIdea.outline;
-      
-      // If no outline but volume content is present (user pasted it), use that? 
-      // Actually, 'Full Split' usually implies splitting the *entire* outline.
-      // If the user wants to split the current input text into *all* chapters, we can pass volumeContent if outline is missing.
-      if (!sourceContent && volumeContent) {
-        sourceContent = volumeContent;
-      }
-
-      if (!sourceContent) throw new Error('请先生成全书大纲，或在下方输入框中输入内容。');
-
-      const tempConfig = { ...defaultModel, modelName: stageModels.beats };
-
-      // We might want to let user specify total chapters for full split too?
-      // For now, let's assume the AI decides or we pass a hint if needed.
-      // But `generateChapterBeatsFromOutline` usually just takes the outline.
-      
-      const result = await generateChapterBeatsFromOutline(tempConfig, sourceContent, customTemplate);
-      
-      // Update Idea with new beats (replacing old ones? or appending?)
-      // "Full Split" implies overwriting or setting the canonical list.
-      onUpdateIdea(activeIdea.id, { chapterBeats: result });
-      
-      // Also update history log for reference?
-      const newSplit: BeatsSplit = {
-        id: Date.now().toString(),
-        volumeContent: "【全书拆分】\n" + sourceContent.slice(0, 200) + "...",
-        chapterCount: result.length,
-        startChapter: 1,
-        beats: result,
-        createdAt: Date.now()
-      };
-      
-      const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
-
-      const historyEntry: GenerationHistoryEntry = {
-        id: Date.now().toString(),
-        type: 'beats',
-        content: `【全书细纲拆分】\n共生成 ${result.length} 章`,
-        prompt: customTemplate,
-        model: tempConfig.modelName,
-        createdAt: Date.now()
-      };
-
-      onUpdateIdea(activeIdea.id, { 
-        chapterBeats: result, 
-        beatsSplitHistory: updatedHistory,
-        lastSplitChapterNum: result.length,
-        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
-      });
-
-      setCurrentSplit(newSplit);
-      setShowSplitHistory(false);
-
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setIsGenerating(false);
+  const handleTextareaSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const target = e.currentTarget;
+    setSelectionRange({
+      start: target.selectionStart,
+      end: target.selectionEnd
+    });
+    // Automatically switch to selection mode if a significant selection is made
+    if (target.selectionEnd - target.selectionStart > 5) {
+      setSplitMode('selection');
     }
   };
 
   // New: Volume-based beats splitting
   const handleSplitVolume = async () => {
     if (!activeIdea || isGenerating || !volumeContent.trim()) return;
+    
+    let contentToProcess = volumeContent;
+    
+    if (splitMode === 'selection') {
+      const { start, end } = selectionRange;
+      if (end > start) {
+        contentToProcess = volumeContent.substring(start, end);
+      } else {
+        alert("请先在输入框中选中需要拆分的文字片段，或切换为“全部内容”模式。");
+        return;
+      }
+    }
+
     setIsGenerating(true);
     try {
       const modelConfig = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
@@ -496,46 +534,25 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const customTemplate = beatsPromptId !== 'default' ? beatsPrompts.find(p => p.id === beatsPromptId)?.template : undefined;
       let startChapter = (activeIdea.lastSplitChapterNum || 0) + 1;
-      let finalContent = volumeContent;
-
-      // Handle Linked Book Context
-      if (useLinkedBookContext && activeIdea.linkedBookId) {
-        const linkedBook = books?.find(b => b.id === activeIdea.linkedBookId);
-        if (linkedBook && linkedBook.chapters.length > 0) {
-          if (linkedRefChapterIds.length > 0) {
-            // Multi-select mode
-            const selectedChapters = linkedBook.chapters.filter(c => linkedRefChapterIds.includes(c.id));
-            // Sort by order in book
-            const sortedSelected = selectedChapters.sort((a, b) => {
-              return linkedBook.chapters.indexOf(a) - linkedBook.chapters.indexOf(b);
-            });
-
-            const refContent = sortedSelected.map(c =>
-              `【章节：${c.title}】\n${c.summary || c.content.slice(0, 500)}...`
-            ).join('\n\n');
-
-            finalContent = `【前情提要 (基于已选关联章节)】\n${refContent}\n\n【接下来的剧情大纲】\n${volumeContent}`;
-          } else {
-            // Fallback to last chapter
-            const targetChapter = linkedBook.chapters[linkedBook.chapters.length - 1];
-            if (targetChapter) {
-              finalContent = `【前情提要 (基于已有关联章节: ${targetChapter.title})】\n${targetChapter.summary || targetChapter.content.slice(0, 800)}...\n\n【接下来的剧情大纲】\n${volumeContent}`;
-            }
-          }
-        }
-      }
 
       const beats = await generateBeatsFromVolumeContent(
         { ...modelConfig, modelName: stageModels.beats },
-        finalContent,
-        splitChapterCount,
-        startChapter,
+        {
+          volumeContent: contentToProcess,
+          chapterCount: splitChapterCount,
+          startChapter: startChapter,
+          spark: activeIdea.spark,
+          core: activeIdea.storyCore,
+          synopsis: activeIdea.storySynopsis,
+          worldview: activeIdea.worldview,
+          characters: activeIdea.characters
+        },
         customTemplate
       );
 
       const newSplit: BeatsSplit = {
         id: Date.now().toString(),
-        volumeContent,
+        volumeContent: contentToProcess, // Save only the processed part to history
         chapterCount: splitChapterCount,
         startChapter,
         beats,
@@ -622,7 +639,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   };
 
   // Helper for Model Selector UI
-  const ModelSelector = ({ stage }: { stage: 'spark' | 'story' | 'plot' | 'volume' | 'beats' }) => (
+  const ModelSelector = ({ stage }: { stage: 'spark' | 'story' | 'plot' | 'volume' | 'beats' | 'character' }) => (
     <div className="relative group">
       <Cpu className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
       <select
@@ -742,6 +759,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             {[
               { id: 'spark', label: '灵感', icon: Lightbulb },
               { id: 'world', label: '世界观', icon: Globe },
+              { id: 'character', label: '人物小传', icon: Users },
               { id: 'plot', label: '大纲', icon: ArrowRight },
               { id: 'volume', label: '分卷', icon: List },
               { id: 'beats', label: '细纲', icon: FileText },
@@ -880,7 +898,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                         value={activeIdea.storySynopsis || ''}
                         onChange={(e) => onUpdateIdea(activeIdea.id, { storySynopsis: e.target.value })}
                         placeholder="生成的故事概要将显示在这里..."
-                        className="w-full h-80 bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                        className="w-full h-[400px] bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
                       />
                     </div>
                   </section>
@@ -915,46 +933,277 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       value={activeIdea.worldview || ''}
                       onChange={(e) => onUpdateIdea(activeIdea.id, { worldview: e.target.value })}
                       placeholder="点击按钮生成基于内核和概要的详细世界观、力量体系、地理环境等..."
-                      className="w-full h-96 bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                      className="w-full h-[700px] bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
                     />
                   </div>
                 </section>
               </div>
             )}
 
-            {activeStage === 'plot' && (
-              <div className="p-8 max-w-5xl mx-auto space-y-8">
-                {/* Storyline Section */}
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
-                      <ArrowRight className="w-5 h-5 mr-2 text-green-400" />
-                      故事主线 (Storyline)
-                    </h3>
-                    <div className="flex items-center gap-3">
-                      <ModelSelector stage="spark" />
-                      <button
-                        onClick={handleGenerateStoryline}
-                        disabled={isGenerating || !activeIdea.spark.trim()}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
-                      >
-                        {isGenerating ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Wand2 className="w-4 h-4 mr-2" />
-                        )}
-                        生成故事线
-                      </button>
+            {activeStage === 'character' && (
+              <div className="p-8 max-w-6xl mx-auto space-y-8">
+                 {/* Header & Controls */}
+                 <div className="flex flex-col gap-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xl font-bold text-white flex items-center">
+                          <Users className="w-6 h-6 mr-2 text-pink-400" />
+                          人物小传
+                        </h3>
+                        <p className="text-sm text-gray-500 mt-1">设计故事的核心角色，让人物活起来</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                      {/* Generation Settings */}
+                      <div className="flex items-center gap-6">
+                         <div className="flex items-center gap-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">主角</label>
+                            <input 
+                              type="number" min="0" max="10"
+                              value={charGenReqs.protagonist}
+                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, protagonist: parseInt(e.target.value) || 0 }))}
+                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            />
+                         </div>
+                         <div className="flex items-center gap-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">反派</label>
+                            <input 
+                              type="number" min="0" max="10"
+                              value={charGenReqs.antagonist}
+                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, antagonist: parseInt(e.target.value) || 0 }))}
+                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            />
+                         </div>
+                         <div className="flex items-center gap-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">配角</label>
+                            <input 
+                              type="number" min="0" max="10"
+                              value={charGenReqs.supporting}
+                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, supporting: parseInt(e.target.value) || 0 }))}
+                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            />
+                         </div>
+                      </div>
+
+                      {/* Action Area */}
+                      <div className="flex items-center gap-3">
+                        <PromptSelector 
+                          category="character" 
+                          value={characterPromptId} 
+                          onChange={setCharacterPromptId} 
+                        />
+                        <ModelSelector stage="character" />
+                        <button
+                          onClick={handleGenerateCharacters}
+                          disabled={isGenerating || !activeIdea.spark.trim()}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                        >
+                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                          生成 (共 {charGenReqs.protagonist + charGenReqs.antagonist + charGenReqs.supporting} 人)
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <textarea
-                    value={activeIdea.storyline || ''}
-                    onChange={(e) => onUpdateIdea(activeIdea.id, { storyline: e.target.value })}
-                    placeholder="在这里描述故事的起承转合..."
-                    className="w-full h-48 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                  />
-                </section>
 
+                  {/* Character List */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                     {activeIdea.characters?.map((char, idx) => (
+                        <div key={char.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group relative">
+                           {/* Delete Button */}
+                           <button
+                              onClick={() => {
+                                const updated = activeIdea.characters?.filter(c => c.id !== char.id);
+                                onUpdateIdea(activeIdea.id, { characters: updated });
+                              }}
+                              className="absolute top-4 right-4 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                           >
+                              <Trash2 className="w-4 h-4" />
+                           </button>
+
+                           {/* Name & Role */}
+                           <div className="mb-4">
+                              <input
+                                value={char.name}
+                                onChange={(e) => {
+                                  const updated = [...(activeIdea.characters || [])];
+                                  updated[idx] = { ...char, name: e.target.value };
+                                  onUpdateIdea(activeIdea.id, { characters: updated });
+                                }}
+                                className="bg-transparent text-lg font-bold text-white focus:outline-none w-full mb-1"
+                                placeholder="角色姓名"
+                              />
+                              <input
+                                value={char.role}
+                                onChange={(e) => {
+                                  const updated = [...(activeIdea.characters || [])];
+                                  updated[idx] = { ...char, role: e.target.value };
+                                  onUpdateIdea(activeIdea.id, { characters: updated });
+                                }}
+                                className="bg-transparent text-xs text-pink-400 focus:outline-none w-full"
+                                placeholder="角色定位 (主角/反派...)"
+                              />
+                           </div>
+
+                           {/* Basic Info */}
+                           <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="text-xs text-gray-500 block mb-1">性别</label>
+                                <input
+                                  value={char.gender || ''}
+                                  onChange={(e) => {
+                                    const updated = [...(activeIdea.characters || [])];
+                                    updated[idx] = { ...char, gender: e.target.value };
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 block mb-1">年龄</label>
+                                <input
+                                  value={char.age || ''}
+                                  onChange={(e) => {
+                                    const updated = [...(activeIdea.characters || [])];
+                                    updated[idx] = { ...char, age: e.target.value };
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                                />
+                              </div>
+                           </div>
+
+                           {/* Description */}
+                           <div className="space-y-3">
+                              <div>
+                                <label className="text-xs font-bold text-gray-600 uppercase block mb-1">一句话介绍</label>
+                                <textarea
+                                  value={char.description}
+                                  onChange={(e) => {
+                                    const updated = [...(activeIdea.characters || [])];
+                                    updated[idx] = { ...char, description: e.target.value };
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-20"
+                                />
+                              </div>
+                              
+                              <button
+                                onClick={() => setEditingCharacterId(char.id)}
+                                className="w-full py-2 flex items-center justify-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all"
+                              >
+                                 <Maximize2 className="w-3 h-3" />
+                                 编辑详细设定 (性格/外貌/背景)
+                              </button>
+                           </div>
+                        </div>
+                     ))}
+                     
+                     {/* Add New Character Button */}
+                     <button
+                        onClick={() => {
+                           const newChar: CharacterProfile = {
+                              id: Date.now().toString(),
+                              name: '新角色',
+                              role: '配角',
+                              description: '',
+                           };
+                           onUpdateIdea(activeIdea.id, { characters: [...(activeIdea.characters || []), newChar] });
+                        }}
+                        className="border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-600 hover:text-gray-400 hover:border-gray-700 hover:bg-gray-900/30 transition-all min-h-[300px]"
+                     >
+                        <Plus className="w-12 h-12 mb-4 opacity-20" />
+                        <span className="font-medium">手动添加角色</span>
+                     </button>
+                  </div>
+
+                  {/* Character Edit Modal */}
+                  {editingCharacterId && (() => {
+                    const char = activeIdea.characters?.find(c => c.id === editingCharacterId);
+                    if (!char) return null;
+                    return (
+                      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+                        <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                           <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
+                              <div>
+                                <h3 className="text-xl font-bold text-white">{char.name || '未命名角色'} - 详细设定</h3>
+                                <p className="text-sm text-gray-500 mt-1">{char.role} · {char.gender} · {char.age}</p>
+                              </div>
+                              <button 
+                                onClick={() => setEditingCharacterId(null)}
+                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                           </div>
+                           
+                           <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-gray-950/50">
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-indigo-400 uppercase tracking-wider">
+                                  <User className="w-4 h-4 mr-2" />
+                                  性格特征
+                                </label>
+                                <textarea
+                                   value={char.personality || ''}
+                                   onChange={(e) => {
+                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, personality: e.target.value } : c);
+                                      onUpdateIdea(activeIdea.id, { characters: updated });
+                                   }}
+                                   className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                   placeholder="描述角色的性格、习惯、说话方式..."
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-pink-400 uppercase tracking-wider">
+                                  <Maximize2 className="w-4 h-4 mr-2" />
+                                  外貌描写
+                                </label>
+                                <textarea
+                                   value={char.appearance || ''}
+                                   onChange={(e) => {
+                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, appearance: e.target.value } : c);
+                                      onUpdateIdea(activeIdea.id, { characters: updated });
+                                   }}
+                                   className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                   placeholder="描述角色的外貌、穿着、体态..."
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-green-400 uppercase tracking-wider">
+                                  <History className="w-4 h-4 mr-2" />
+                                  背景故事
+                                </label>
+                                <textarea
+                                   value={char.background || ''}
+                                   onChange={(e) => {
+                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, background: e.target.value } : c);
+                                      onUpdateIdea(activeIdea.id, { characters: updated });
+                                   }}
+                                   className="w-full h-64 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                   placeholder="描述角色的过去、经历、秘密..."
+                                />
+                              </div>
+                           </div>
+                           
+                           <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
+                              <button
+                                onClick={() => setEditingCharacterId(null)}
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                              >
+                                完成编辑
+                              </button>
+                           </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+              </div>
+            )}
+
+            {activeStage === 'plot' && (
+              <div className="p-8 max-w-5xl mx-auto space-y-8">
                 {/* Full Outline Section */}
                 <section className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -965,8 +1214,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     <div className="flex items-center gap-3">
                       <ModelSelector stage="story" />
                       <button
-                        onClick={handleStorylineToOutline}
-                        disabled={isGenerating || !activeIdea.storyline}
+                        onClick={handleGenerateCompleteOutline}
+                        disabled={isGenerating}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
                       >
                         {isGenerating ? (
@@ -974,15 +1223,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                         ) : (
                           <Wand2 className="w-4 h-4 mr-2" />
                         )}
-                        生成详细大纲
+                        生成全书大纲 (含主线与分卷)
                       </button>
                     </div>
                   </div>
                   <textarea
                     value={activeIdea.outline || ''}
                     onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
-                    placeholder="详细的三幕式大纲或卷纲..."
-                    className="w-full h-96 bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                    placeholder="包含故事主线、分卷细纲及支线剧情..."
+                    className="w-full h-[800px] bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
                   />
                 </section>
               </div>
@@ -1043,16 +1292,30 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   <div className="md:col-span-2">
                     {activeVolumeId ? (
                       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-                        <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+                        <div className="p-6 border-b border-gray-800 bg-gray-900/50 flex items-center justify-between">
                           <input
                             value={activeIdea.volumes?.find(v => v.id === activeVolumeId)?.title || ''}
                             onChange={(e) => {
                               const updated = activeIdea.volumes?.map(v => v.id === activeVolumeId ? { ...v, title: e.target.value } : v);
                               onUpdateIdea(activeIdea.id, { volumes: updated });
                             }}
-                            className="bg-transparent text-xl font-bold text-white focus:outline-none w-full"
+                            className="bg-transparent text-xl font-bold text-white focus:outline-none flex-1 mr-4"
                             placeholder="分卷标题"
                           />
+                          <button
+                            onClick={() => {
+                              const vol = activeIdea.volumes?.find(v => v.id === activeVolumeId);
+                              if (vol) {
+                                setVolumeContent(vol.summary);
+                                setActiveStage('beats');
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-600/20 rounded-lg text-xs font-medium flex items-center transition-all"
+                            title="将本卷内容推送到细纲拆分页面"
+                          >
+                            <FileText className="w-3.5 h-3.5 mr-1.5" />
+                            推送至细纲拆解
+                          </button>
                         </div>
                         <div className="p-6 space-y-6">
                           <div>
@@ -1063,7 +1326,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                 const updated = activeIdea.volumes?.map(v => v.id === activeVolumeId ? { ...v, summary: e.target.value } : v);
                                 onUpdateIdea(activeIdea.id, { volumes: updated });
                               }}
-                              className="w-full h-48 bg-gray-950 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed"
+                              className="w-full h-[600px] bg-gray-950 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed"
                               placeholder="输入本卷要讲述的核心故事..."
                             />
                           </div>
@@ -1091,14 +1354,6 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   </div>
                   <div className="flex items-center gap-3">
                     <ModelSelector stage="beats" />
-                    <button
-                      onClick={handleGenerateBeats}
-                      disabled={isGenerating || !activeIdea.outline}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
-                    >
-                      {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                      智能拆分章节
-                    </button>
                   </div>
                 </div>
 
@@ -1106,38 +1361,82 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   {/* Left: Input/Config Area */}
                   <div className="xl:col-span-1 space-y-6">
                     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
+                      
+                      {/* Split Mode Selector */}
                       <div className="space-y-3">
-                        <label className="text-sm font-medium text-gray-300 flex items-center">
-                          <Plus className="w-4 h-4 mr-2 text-indigo-400" />
-                          拆分段落内容
+                        <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
+                          <div className="flex items-center">
+                            <Plus className="w-4 h-4 mr-2 text-indigo-400" />
+                            拆解范围
+                          </div>
+                          {splitMode === 'selection' && (
+                             <span className="text-xs text-indigo-400">
+                               已选中 {selectionRange.end - selectionRange.start} 字
+                             </span>
+                          )}
                         </label>
-                        <textarea
-                          value={volumeContent}
-                          onChange={(e) => setVolumeContent(e.target.value)}
-                          placeholder="粘贴一段分卷大纲或剧情，将其拆分为章节..."
-                          className="w-full h-48 bg-gray-950 border border-gray-800 rounded-xl p-4 text-xs text-gray-400 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none"
-                        />
+                        <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                           <button
+                             onClick={() => setSplitMode('full')}
+                             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'full' 
+                               ? 'bg-gray-800 text-white shadow-sm' 
+                               : 'text-gray-500 hover:text-gray-300'}`}
+                           >
+                             全部内容
+                           </button>
+                           <button
+                             onClick={() => setSplitMode('selection')}
+                             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'selection' 
+                               ? 'bg-gray-800 text-white shadow-sm' 
+                               : 'text-gray-500 hover:text-gray-300'}`}
+                           >
+                             选中片段
+                           </button>
+                        </div>
                       </div>
 
                       <div className="space-y-3">
-                        <label className="text-sm font-medium text-gray-300">拆分章数</label>
-                        <input
-                          type="number"
-                          value={splitChapterCount}
-                          onChange={(e) => setSplitChapterCount(parseInt(e.target.value))}
-                          className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500/30"
-                          min="1"
-                          max="20"
+                        <textarea
+                          ref={textareaRef}
+                          onSelect={handleTextareaSelect}
+                          value={volumeContent}
+                          onChange={(e) => setVolumeContent(e.target.value)}
+                          placeholder="此处会自动填充从分卷推送的内容，您也可以手动粘贴一段剧情。选中部分文字可进行局部拆分。"
+                          className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${
+                            splitMode === 'selection' && selectionRange.end > selectionRange.start 
+                              ? 'border-indigo-500/50' 
+                              : 'border-gray-800 focus:border-indigo-500/30'
+                          }`}
                         />
+                        {splitMode === 'selection' && selectionRange.end === selectionRange.start && (
+                          <div className="text-xs text-yellow-500 flex items-center">
+                             <span className="mr-1">⚠️</span> 请在上方输入框中用鼠标选中需要拆分的文字
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-sm font-medium text-gray-300">预计拆分为</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={splitChapterCount}
+                            onChange={(e) => setSplitChapterCount(parseInt(e.target.value))}
+                            className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500/30"
+                            min="1"
+                            max="50"
+                          />
+                          <span className="text-gray-500 text-sm">章</span>
+                        </div>
                       </div>
 
                       <button
                         onClick={handleSplitVolume}
-                        disabled={isGenerating || !volumeContent.trim()}
-                        className="w-full py-3 bg-gray-800 hover:bg-gray-750 disabled:opacity-50 text-indigo-400 rounded-xl flex items-center justify-center font-medium transition-all border border-indigo-500/20"
+                        disabled={isGenerating || !volumeContent.trim() || (splitMode === 'selection' && selectionRange.end <= selectionRange.start)}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center font-medium transition-all shadow-lg shadow-indigo-500/20"
                       >
-                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-                        执行局部拆分
+                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                        {splitMode === 'full' ? '拆解全部内容' : '拆解选中片段'}
                       </button>
                     </div>
                   </div>

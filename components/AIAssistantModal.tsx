@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Book, User, Send, Wand2, ChevronDown, Cpu, X, Link, Plus, Copy, Check, RefreshCw } from 'lucide-react';
+import { Sparkles, Book, User, Send, Wand2, ChevronDown, ChevronRight, Cpu, X, Link, Plus, Copy, Check, RefreshCw, Eye } from 'lucide-react';
 import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter, ModelConfig } from '../types';
 import { ChapterLinkModal, ChapterLink } from './ChapterLinkModal';
 
@@ -72,10 +72,29 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     // Chapter Link Modal State
     const [showChapterLinkModal, setShowChapterLinkModal] = useState(false);
 
+    // Sidebar Sections State
+    const [expandedSections, setExpandedSections] = useState({
+        character: true,
+        plot: true,
+        world: true,
+        chapter: true
+    });
+
+    const toggleSection = (section: keyof typeof expandedSections) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    // Viewing Detail State
+    const [viewingItem, setViewingItem] = useState<{ title: string; content: string } | null>(null);
+
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     const characters = entities.filter(e => e.type === EntityType.CHARACTER);
     const worldItems = entities.filter(e => e.type === EntityType.WORLDVIEW);
+    const plotItems = entities.filter(e => 
+        (e.type === EntityType.PLOT || e.type === EntityType.IDEA) && 
+        !['核心灵感 (Spark)', '故事主线'].includes(e.name)
+    );
 
     // Filtered prompts for the dropdown
     const filteredTemplates = selectedCategory
@@ -212,7 +231,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                 <div className="bg-gray-900 w-full max-w-6xl h-[85vh] rounded-xl shadow-2xl border border-gray-800 flex overflow-hidden flex-col md:flex-row">
 
                     {/* Left Sidebar: Context Settings */}
-                    <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col h-1/3 md:h-full">
+                    <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col h-1/3 md:h-full relative">
                         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
                             <h3 className="text-sm font-bold text-gray-300 flex items-center">
                                 <Book className="w-4 h-4 mr-2 text-indigo-500" />
@@ -228,86 +247,193 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                             {/* Characters Section */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
-                                    <User className="w-3 h-3 mr-1" /> 角色卡
-                                </h3>
-                                <div className="space-y-1">
-                                    {characters.length === 0 && <p className="text-xs text-gray-600 italic">暂无角色</p>}
-                                    {characters.map(char => (
-                                        <label key={char.id} className="flex items-start p-2 hover:bg-gray-800 rounded cursor-pointer group transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedEntityIds.includes(char.id)}
-                                                onChange={() => onToggleEntity(char.id)}
-                                                className="mt-1 rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
-                                            />
-                                            <div className="ml-3">
-                                                <div className="text-sm font-medium text-gray-200 group-hover:text-white">{char.name}</div>
+                                <button 
+                                    onClick={() => toggleSection('character')}
+                                    className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
+                                >
+                                    <div className="flex items-center">
+                                        <User className="w-3 h-3 mr-1" /> 角色卡
+                                    </div>
+                                    {expandedSections.character ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                </button>
+                                {expandedSections.character && (
+                                    <div className="space-y-1 pl-2">
+                                        {characters.length === 0 && <p className="text-xs text-gray-600 italic py-1">暂无角色</p>}
+                                        {characters.map(char => (
+                                            <div key={char.id} className="flex items-center justify-between group p-1.5 hover:bg-gray-800 rounded transition-colors">
+                                                <label className="flex items-center cursor-pointer flex-1 min-w-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedEntityIds.includes(char.id)}
+                                                        onChange={() => onToggleEntity(char.id)}
+                                                        className="rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
+                                                    />
+                                                    <span className="ml-2 text-sm text-gray-300 group-hover:text-white truncate">{char.name}</span>
+                                                </label>
+                                                <button
+                                                    onClick={() => setViewingItem({ title: char.name, content: char.content })}
+                                                    className="p-1 text-gray-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="查看详情"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                </button>
                                             </div>
-                                        </label>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Plot/Story Section */}
+                            <div>
+                                <button 
+                                    onClick={() => toggleSection('plot')}
+                                    className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
+                                >
+                                    <div className="flex items-center">
+                                        <Sparkles className="w-3 h-3 mr-1" /> 剧情/灵感
+                                    </div>
+                                    {expandedSections.plot ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                </button>
+                                {expandedSections.plot && (
+                                    <div className="space-y-1 pl-2">
+                                        {plotItems.length === 0 && <p className="text-xs text-gray-600 italic py-1">暂无剧情设定</p>}
+                                        {plotItems.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between group p-1.5 hover:bg-gray-800 rounded transition-colors">
+                                                <label className="flex items-center cursor-pointer flex-1 min-w-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedEntityIds.includes(item.id)}
+                                                        onChange={() => onToggleEntity(item.id)}
+                                                        className="rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
+                                                    />
+                                                    <span className="ml-2 text-sm text-gray-300 group-hover:text-white truncate">{item.name}</span>
+                                                </label>
+                                                <button
+                                                    onClick={() => setViewingItem({ title: item.name, content: item.content })}
+                                                    className="p-1 text-gray-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="查看详情"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Worldview Section */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
-                                    <Book className="w-3 h-3 mr-1" /> 世界观
-                                </h3>
-                                <div className="space-y-1">
-                                    {worldItems.length === 0 && <p className="text-xs text-gray-600 italic">暂无世界观</p>}
-                                    {worldItems.map(item => (
-                                        <label key={item.id} className="flex items-start p-2 hover:bg-gray-800 rounded cursor-pointer group transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedEntityIds.includes(item.id)}
-                                                onChange={() => onToggleEntity(item.id)}
-                                                className="mt-1 rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
-                                            />
-                                            <div className="ml-3">
-                                                <div className="text-sm font-medium text-gray-200 group-hover:text-white">{item.name}</div>
+                                <button 
+                                    onClick={() => toggleSection('world')}
+                                    className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
+                                >
+                                    <div className="flex items-center">
+                                        <Book className="w-3 h-3 mr-1" /> 世界观
+                                    </div>
+                                    {expandedSections.world ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                </button>
+                                {expandedSections.world && (
+                                    <div className="space-y-1 pl-2">
+                                        {worldItems.length === 0 && <p className="text-xs text-gray-600 italic py-1">暂无世界观</p>}
+                                        {worldItems.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between group p-1.5 hover:bg-gray-800 rounded transition-colors">
+                                                <label className="flex items-center cursor-pointer flex-1 min-w-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedEntityIds.includes(item.id)}
+                                                        onChange={() => onToggleEntity(item.id)}
+                                                        className="rounded bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500/50"
+                                                    />
+                                                    <span className="ml-2 text-sm text-gray-300 group-hover:text-white truncate">{item.name}</span>
+                                                </label>
+                                                <button
+                                                    onClick={() => setViewingItem({ title: item.name, content: item.content })}
+                                                    className="p-1 text-gray-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="查看详情"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                </button>
                                             </div>
-                                        </label>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Chapters Section */}
                             {chapters && chapters.length > 1 && (
                                 <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center">
+                                    <button 
+                                        onClick={() => toggleSection('chapter')}
+                                        className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
+                                    >
+                                        <div className="flex items-center">
                                             <Link className="w-3 h-3 mr-1" /> 关联章节
-                                        </h3>
-                                        <button
-                                            onClick={() => setShowChapterLinkModal(true)}
-                                            className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
-                                        >
-                                            选择章节
-                                        </button>
-                                    </div>
-                                    {chapterLinks && chapterLinks.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {chapterLinks.map(link => {
-                                                const chapter = chapters.find(c => c.id === link.chapterId);
-                                                if (!chapter) return null;
-                                                return (
-                                                    <div key={link.chapterId} className="p-2 bg-gray-800/50 rounded border border-gray-700 text-xs text-gray-300">
-                                                        <span className="truncate block">{chapter.title}</span>
-                                                        <span className="text-gray-500">{link.type === 'content' ? '正文' : '概要'}</span>
-                                                    </div>
-                                                );
-                                            })}
                                         </div>
-                                    ) : (
-                                        <p className="text-xs text-gray-600 italic">未关联章节</p>
+                                        {expandedSections.chapter ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                    </button>
+                                    
+                                    {expandedSections.chapter && (
+                                        <div className="space-y-2 pl-2 mt-1">
+                                            <button
+                                                onClick={() => setShowChapterLinkModal(true)}
+                                                className="w-full text-left text-xs text-indigo-400 hover:text-indigo-300 hover:underline px-1"
+                                            >
+                                                + 选择关联章节
+                                            </button>
+                                            {chapterLinks && chapterLinks.length > 0 ? (
+                                                <div className="space-y-1">
+                                                    {chapterLinks.map(link => {
+                                                        const chapter = chapters.find(c => c.id === link.chapterId);
+                                                        if (!chapter) return null;
+                                                        return (
+                                                            <div key={link.chapterId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700 text-xs text-gray-300 group">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <span className="truncate block">{chapter.title}</span>
+                                                                    <span className="text-gray-500 text-[10px]">{link.type === 'content' ? '正文' : '概要'}</span>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setViewingItem({ 
+                                                                        title: chapter.title, 
+                                                                        content: link.type === 'content' ? chapter.content : (chapter.summary || '暂无概要') 
+                                                                    })}
+                                                                    className="p-1 text-gray-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    title="查看内容"
+                                                                >
+                                                                    <Eye className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-gray-600 italic px-1">未关联章节</p>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             )}
                         </div>
+
+                        {/* Detail View Modal (Overlay) */}
+                        {viewingItem && (
+                            <div className="absolute inset-0 z-50 bg-gray-900 border-r border-gray-800 flex flex-col animate-in slide-in-from-left-4 duration-200">
+                                <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/95 backdrop-blur-sm">
+                                    <h3 className="font-bold text-gray-200 truncate pr-4">{viewingItem.title}</h3>
+                                    <button 
+                                        onClick={() => setViewingItem(null)}
+                                        className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed custom-scrollbar bg-gray-950">
+                                    {viewingItem.content || <span className="text-gray-600 italic">暂无内容</span>}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Right Main: Chat & Controls */}

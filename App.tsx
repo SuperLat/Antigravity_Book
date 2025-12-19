@@ -432,18 +432,6 @@ const App: React.FC = () => {
       });
     }
 
-    // 3. Storyline (Story Arc)
-    if (idea.storyline) {
-      newEntities.push({
-        id: Date.now() + '_story',
-        type: EntityType.PLOT,
-        name: '故事主线',
-        description: '初步构思的故事脉络',
-        tags: ['大纲', '故事线'],
-        content: idea.storyline
-      });
-    }
-
     // 4. Full Outline
     if (idea.outline) {
       newEntities.push({
@@ -469,6 +457,27 @@ const App: React.FC = () => {
         description: '按卷划分的剧情大纲',
         tags: ['大纲', '分卷'],
         content: volumeContent
+      });
+    }
+
+    // 6. Characters (Character Profiles)
+    if (idea.characters && idea.characters.length > 0) {
+      idea.characters.forEach((char, index) => {
+        newEntities.push({
+          id: Date.now() + `_char_${index}`,
+          type: EntityType.CHARACTER,
+          name: char.name,
+          description: char.description || `${char.role}`,
+          tags: ['人物', char.role],
+          content: `【姓名】：${char.name}
+【定位】：${char.role}
+【性别】：${char.gender || '未知'}
+【年龄】：${char.age || '未知'}
+【一句话介绍】：${char.description}
+【性格特征】：${char.personality || '暂无'}
+【外貌描写】：${char.appearance || '暂无'}
+【背景故事】：${char.background || '暂无'}`
+        });
       });
     }
 

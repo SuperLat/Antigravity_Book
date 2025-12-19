@@ -96,6 +96,18 @@ export interface Volume {
   parts?: Part[];
 }
 
+export interface CharacterProfile {
+  id: string;
+  name: string;
+  role: string; // e.g. 主角, 反派, 配角
+  gender?: string;
+  age?: string;
+  description: string; // Short bio
+  background?: string; // Detailed background
+  personality?: string; // Personality traits
+  appearance?: string; // Appearance description
+}
+
 export interface IdeaProject {
   id: string;
   title: string;
@@ -107,6 +119,7 @@ export interface IdeaProject {
   storyBackground?: string; // 新增：背景
   storyline?: string; // 新增：故事线
   worldview: string; // Keep for compatibility, or repurpose
+  characters?: CharacterProfile[]; // 新增：角色人物小传
   outline: string;
   volumes?: Volume[];
   chapterBeats?: ChapterBeat[];

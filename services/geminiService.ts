@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat, BeatsSplit } from '../types';
+import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat, BeatsSplit, CharacterProfile } from '../types';
 
 // Default env key
 const DEFAULT_API_KEY = process.env.API_KEY || '';
@@ -196,66 +196,89 @@ export const testModelConfig = async (modelConfig: ModelConfig): Promise<{ succe
 };
 
 export const generateVolumesFromOutline = async (
+
   config: ModelConfig,
+
   outline: string,
+
   customTemplate?: string
+
 ): Promise<{ title: string; summary: string }[]> => {
-  const prompt = customTemplate
-    ? customTemplate.replace('{{context}}', outline)
-    : `
-作为一名资深网文策划，请根据以下全书大纲，将其拆分为 3-5 个具体的“卷”（Volume）。
-每一卷应该有一个明确的主题或阶段性目标，并包含该卷的详细剧情摘要。
 
-全书大纲：
-${outline}
+  // 1. Strict Regex Extraction (No AI)
 
-请以 JSON 数组格式返回，格式如下：
-[
-  {
-    "title": "第一卷：卷名",
-    "summary": "本卷的详细剧情摘要，包括主要冲突、高潮和结局..."
-  },
-  ...
-]
-只返回 JSON 数据，不要包含 markdown 标记或其他文本。
-`;
+  // We use local extraction to avoid Token limits and ensure exact fidelity to the outline.
 
-  const systemInstruction = "你是一个专业的小说策划师。请根据用户提供的大纲，将其拆分为多个分卷。";
+  const volumes: { title: string; summary: string }[] = [];
 
-  try {
-    let text = '';
-    if (config.provider === 'gemini') {
-      initializeGemini(config.apiKey);
-      if (!geminiClient) throw new Error("API Key missing.");
+  
 
-      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-        model: config.modelName || 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          systemInstruction,
-          temperature: 0.8,
-          maxOutputTokens: 4096,
-        }
-      }));
-      text = response.text || "";
-    } else {
-      text = await retryWithBackoff(() => callOpenAICompatible(
-        config,
-        [{ role: 'user', content: prompt }],
-        systemInstruction
-      ));
+  // Regex to match headers.
+
+  // Supports:
+
+  // - Markdown headers: #, ##, ###
+
+  // - Plain text starts
+
+  // - Patterns: "第x卷", "Volume x", "卷x"
+
+  const headerRegex = /^\s*(?:#{1,6}\s*)?.*(?:第[0-9零一二三四五六七八九十百]+卷|Volume\s*\d+|卷[0-9零一二三四五六七八九十百]+).*$/gmi;
+
+
+
+  const matches = [...outline.matchAll(headerRegex)];
+
+  
+
+  if (matches.length > 0) {
+
+    for (let i = 0; i < matches.length; i++) {
+
+      const match = matches[i];
+
+      // Clean up title (remove leading hashes and whitespace)
+
+      const title = match[0].replace(/^[#\s]+/, '').trim();
+
+      
+
+      const startIndex = match.index! + match[0].length;
+
+      const endIndex = (i < matches.length - 1) ? matches[i + 1].index! : outline.length;
+
+      
+
+      const summary = outline.substring(startIndex, endIndex).trim();
+
+      
+
+      if (title) {
+
+        volumes.push({ title, summary });
+
+      }
+
     }
 
-    try {
-      const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-      return JSON.parse(jsonStr);
-    } catch (e) {
-      console.error("Failed to parse volumes JSON", text);
-      throw new Error("AI 返回格式错误，无法解析分卷数据。");
-    }
-  } catch (error) {
-    throw new Error(`生成分卷失败: ${(error as Error).message}`);
   }
+
+
+
+  if (volumes.length === 0) {
+
+     console.warn("No volumes found via Regex extraction in outline:", outline.substring(0, 100));
+
+     throw new Error("无法从大纲中提取分卷信息。\n\n请确保大纲包含清晰的分卷标题，例如：\n“### 第一卷：风起云涌”\n“# 卷一 初始”\n“Volume 1: The Beginning”");
+
+  }
+
+
+
+  console.log(`✅ Successfully extracted ${volumes.length} volumes via Regex.`);
+
+  return volumes;
+
 };
 
 export const generatePartsFromVolume = async (
@@ -565,7 +588,7 @@ ${options?.background ? `- 故事背景：${options.background}` : ''}
       }));
       
       // Handle both property and method access for text
-      text = typeof response.text === 'function' ? response.text() : (response.text || "");
+      text = typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
     } else {
       text = await retryWithBackoff(() => callOpenAICompatible(
         modelConfig,
@@ -725,9 +748,9 @@ export const generateWorldviewFromIdea = async (
     finalPrompt = `
       核心梗/脑洞：【${ideaContent}】
       
-      请基于上述核心梗，设计一个详细的世界观。
+      请基于上述核心梗，设计一个精炼的世界观草案。
       
-      要求包含以下内容：
+      要求包含以下内容（请保持简明扼要）：
       1. 力量体系名称及等级划分。
       2. 社会结构与核心阶层矛盾。
       3. 核心能源或驱动力是什么。
@@ -737,7 +760,7 @@ export const generateWorldviewFromIdea = async (
     `;
   }
 
-  const systemInstruction = "你是一个想象力丰富的世界架构师。请根据用户的灵感碎片构建宏大且逻辑自洽的小说世界观。";
+  const systemInstruction = "你是一个想象力丰富的世界架构师。请根据用户的灵感碎片构建逻辑自洽且精炼的小说世界观。";
 
   try {
     if (modelConfig.provider === 'gemini') {
@@ -753,7 +776,7 @@ export const generateWorldviewFromIdea = async (
           maxOutputTokens: 2048,
         }
       }));
-      return typeof response.text === 'function' ? response.text() : (response.text || "");
+      return typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
     } else {
       return await callOpenAICompatible(modelConfig, [{ role: 'user', content: finalPrompt }], systemInstruction);
     }
@@ -778,23 +801,22 @@ export const generateDetailedWorldview = async (
   const prompt = customTemplate
     ? customTemplate.replace('{{storyLength}}', lengthLabel)
     : `
-      基于以下故事信息，设计一个详细且逻辑自洽的世界观背景。
+      基于以下故事信息，设计一个精炼且逻辑自洽的世界观背景。
       
       【故事篇幅】：${lengthLabel}
       【故事内核】：${context.core || '未设定'}
       【故事概要】：${context.synopsis || '未设定'}
       【初步设定】：类型：${context.genre || '未指定'}，基础背景：${context.background || '未指定'}
       
-      要求包含以下内容：
-      1. 地理环境与风貌：故事发生的空间设定。
-      2. 力量/技术体系：世界运行的核心逻辑（如修仙等级、科技水平、魔法法则等）。
-      3. 社会结构：核心阶层矛盾、政权形式或主要的社会组织。
-      4. 核心冲突源：导致故事发生的深层世界观诱因。
+      要求包含以下内容（请保持简明扼要，避免冗长）：
+      1. 世界背景：简述故事发生的空间设定。
+      2. 力量/技术体系：概括核心逻辑（如修仙等级、科技水平、魔法法则等）。
+      3. 核心冲突源：点出导致故事发生的深层诱因。
       
-      请使用结构清晰的 Markdown 格式输出。
+      请使用结构清晰的 Markdown 格式输出，重点在于核心设定的构建，非核心细节可适当留白。
     `;
 
-  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请为小说构建宏大且逻辑自洽的世界观。";
+  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请为小说构建逻辑自洽且精炼的世界观。";
 
   try {
     if (modelConfig.provider === 'gemini') {
@@ -810,7 +832,7 @@ export const generateDetailedWorldview = async (
           maxOutputTokens: 2048,
         }
       }));
-      return typeof response.text === 'function' ? response.text() : (response.text || "");
+      return typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
     } else {
       return await callOpenAICompatible(modelConfig, [{ role: 'user', content: prompt }], systemInstruction);
     }
@@ -933,6 +955,7 @@ export const generateChapterBeatsFromOutline = async (
         config: {
           systemInstruction,
           temperature: 0.6,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json"
         }
       }));
@@ -947,8 +970,19 @@ export const generateChapterBeatsFromOutline = async (
     }
 
     // Clean up potential markdown code blocks
-    const jsonStr = text.replace(/```json\n?|\n?```/g, '');
-    return JSON.parse(jsonStr) as ChapterBeat[];
+    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+    
+    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      jsonStr = arrayMatch[0];
+    }
+
+    try {
+      return JSON.parse(jsonStr) as ChapterBeat[];
+    } catch (e) {
+      console.error("JSON Parse Error. Raw:", text);
+      throw new Error("AI 返回数据无法解析，请重试。");
+    }
   } catch (error) {
     console.error("JSON Parse Error or AI Error", error);
     throw new Error("生成细纲失败或格式解析错误。");
@@ -958,12 +992,38 @@ export const generateChapterBeatsFromOutline = async (
 // 从卷内容拆分指定数量的章节细纲
 export const generateBeatsFromVolumeContent = async (
   modelConfig: ModelConfig,
-  volumeContent: string,
-  chapterCount: number,
-  startChapter: number,
+  context: {
+    volumeContent: string;
+    chapterCount: number;
+    startChapter: number;
+    spark?: string;
+    core?: string;
+    synopsis?: string;
+    worldview?: string;
+    characters?: CharacterProfile[];
+  },
   customTemplate?: string
 ): Promise<ChapterBeat[]> => {
   let promptContent = '';
+  
+  const { volumeContent, chapterCount, startChapter } = context;
+
+  // Optimize Character Data
+  const optimizedCharacters = context.characters?.map(c => 
+    `- ${c.name} (${c.role}): ${c.description}`
+  ).join('\n') || "暂无具体角色设定";
+
+  const contextBlock = `
+【核心灵感】：${context.spark || ''}
+${context.core ? `【故事内核】：${context.core}` : ''}
+${context.synopsis ? `【故事概要】：${context.synopsis}` : ''}
+
+【世界观设定】：
+${context.worldview ? context.worldview.slice(0, 500) + '...' : '暂无详细设定'}
+
+【核心角色】：
+${optimizedCharacters}
+  `.trim();
 
   if (customTemplate) {
     promptContent = customTemplate
@@ -973,16 +1033,19 @@ export const generateBeatsFromVolumeContent = async (
       .replace(/{{startChapter}}/g, String(startChapter));
   } else {
     promptContent = `
-      【卷大纲内容】：
+      ${contextBlock}
+
+      【待拆解的分卷/剧情内容】：
       ${volumeContent}
 
-      请将以上内容拆分为 ${chapterCount} 个连续的章节细纲。
+      --- 任务指令 ---
+      请结合上述【世界观】、【角色】和【故事背景】，将【待拆解的分卷内容】拆分为 ${chapterCount} 个连续的章节细纲。
       章节编号从第 ${startChapter} 章开始，到第 ${startChapter + chapterCount - 1} 章。
       
       要求：
-      1. 每个章节要有具体的情节推进
-      2. 章节之间要有连贯性
-      3. 包含核心冲突和关键角色
+      1. 每个章节要有具体的情节推进，必须符合人物性格和世界观逻辑。
+      2. 章节之间要有连贯性，承上启下。
+      3. 明确标出每一章的核心冲突和出场关键角色。
     `;
   }
 
@@ -1023,7 +1086,8 @@ export const generateBeatsFromVolumeContent = async (
         contents: finalPrompt,
         config: {
           systemInstruction,
-          temperature: 0.6,
+          temperature: 0.7, // Slightly higher temp for creative splitting
+          maxOutputTokens: 8192,
           responseMimeType: "application/json"
         }
       }));
@@ -1038,10 +1102,264 @@ export const generateBeatsFromVolumeContent = async (
     }
 
     // Clean up potential markdown code blocks
-    const jsonStr = text.replace(/```json\n?|\n?```/g, '');
-    return JSON.parse(jsonStr) as ChapterBeat[];
+    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+    
+    // Attempt to extract JSON array
+    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      jsonStr = arrayMatch[0];
+    }
+
+    try {
+      return JSON.parse(jsonStr) as ChapterBeat[];
+    } catch (parseError) {
+       console.error("JSON Parse Error. Raw Text:", text);
+       throw new Error(`AI 返回格式错误，无法解析细纲数据。`);
+    }
   } catch (error) {
     console.error("JSON Parse Error or AI Error", error);
     throw new Error("生成细纲失败或格式解析错误。");
   }
 };
+
+export const generateCharactersFromIdea = async (
+  modelConfig: ModelConfig,
+  context: {
+    spark: string;
+    core?: string;
+    synopsis?: string;
+    worldview?: string;
+    requirements?: {
+      protagonist: number;
+      antagonist: number;
+      supporting: number;
+    };
+  },
+  customTemplate?: string
+): Promise<Omit<CharacterProfile, 'id'>[]> => {
+  let promptContent = '';
+
+  const { requirements } = context;
+  const countReq = requirements 
+    ? `请严格生成以下数量的角色：主角 ${requirements.protagonist} 人，反派 ${requirements.antagonist} 人，重要配角 ${requirements.supporting} 人。`
+    : "请基于以上故事设定，设计 3-5 个核心角色（包括主角和关键配角/反派）。";
+
+  if (customTemplate) {
+    promptContent = customTemplate
+      .replace(/{{spark}}/g, context.spark)
+      .replace(/{{core}}/g, context.core || '')
+      .replace(/{{synopsis}}/g, context.synopsis || '')
+      .replace(/{{worldview}}/g, context.worldview || '')
+      .replace(/{{input}}/g, context.synopsis || context.spark);
+  } else {
+    promptContent = `
+      【灵感/脑洞】：${context.spark}
+      ${context.core ? `【故事内核】：${context.core}` : ''}
+      ${context.synopsis ? `【故事概要】：${context.synopsis}` : ''}
+      ${context.worldview ? `【世界观设定】：${context.worldview}` : ''}
+
+            ${countReq}
+            
+            要求：
+            1. 角色性格要鲜明，有独特的辨识度。
+            2. 角色背景要与世界观深度结合。
+            3. 角色之间要有充满张力的关系。
+            4. 请精简输出，【背景故事】和【性格描述】请严格控制在 100 字以内，避免过长导致内容截断。
+          `;
+        }
+      
+        const finalPrompt = `
+          ${promptContent}
+          
+          IMPORTANT:
+          请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
+          [
+            {
+              "name": "角色名",
+              "role": "主角/反派/重要配角",
+              "gender": "男/女/其他",
+              "age": "年龄或视觉年龄",
+              "description": "简短的一句话介绍",
+              "personality": "详细的性格描述(100字内)...",
+              "appearance": "详细的外貌描写...",
+              "background": "详细的角色背景故事(100字内)..."
+            },
+            ...
+          ]
+        `;
+      
+        const systemInstruction = "你是一个擅长创造鲜活角色的人物设计师。请设计有血有肉、动机合理的角色。仅返回纯 JSON 数据。";
+      
+        try {
+          let text = '';
+      
+          if (modelConfig.provider === 'gemini') {
+            initializeGemini(modelConfig.apiKey);
+            if (!geminiClient) throw new Error("API Key missing.");
+      
+            const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+              model: modelConfig.modelName || 'gemini-2.5-flash',
+              contents: finalPrompt,
+              config: {
+                systemInstruction,
+                temperature: 0.8,
+                maxOutputTokens: 8192, 
+                responseMimeType: "application/json"
+              }
+            }));
+            text = response.text || "[]";
+          } else {
+            const result = await callOpenAICompatible(
+              modelConfig,
+              [{ role: 'user', content: finalPrompt }],
+              systemInstruction
+            );
+            text = result;
+          }
+      
+          // Clean up potential markdown code blocks and whitespace
+          let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+          
+          // Ensure start from the first bracket
+          const startIdx = jsonStr.indexOf('[');
+          if (startIdx !== -1) {
+            jsonStr = jsonStr.substring(startIdx);
+          }
+      
+              try {
+                return JSON.parse(jsonStr) as Omit<CharacterProfile, 'id'>[];
+              } catch (parseError) {
+                console.warn("Initial JSON parse failed, attempting recovery for truncated JSON...");
+                
+                // Recovery Logic: Try to find the last closing brace '}' and close the array
+                const lastBraceIdx = jsonStr.lastIndexOf('}');
+                if (lastBraceIdx !== -1) {
+                  // Take everything up to the last object end, and assume it's an array that needs closing
+                  const recoveredStr = jsonStr.substring(0, lastBraceIdx + 1) + ']';
+                  try {
+                     const recoveredData = JSON.parse(recoveredStr) as Omit<CharacterProfile, 'id'>[];
+                     console.log("JSON recovery successful. Items recovered:", recoveredData.length);
+                     return recoveredData;
+                  } catch (recoveryError) {
+                     console.error("JSON recovery failed.");
+                  }
+                }
+          
+                console.error("JSON Parse Error. Raw Text:", text);
+                throw new Error(`AI 返回格式错误，无法解析角色数据。原始响应片段: ${text.slice(0, 100)}...`);
+              }
+            } catch (error) {
+              console.error("Generate Characters Error:", error);
+              throw new Error(`生成角色失败: ${(error as Error).message}`);
+            }
+          };
+          
+          export const generateCompleteOutline = async (
+            modelConfig: ModelConfig,
+            data: {
+              spark: string;
+              core?: string;
+              synopsis?: string;
+              storyline?: string;
+              worldview?: string;
+              characters?: CharacterProfile[];
+            },
+            customTemplate?: string
+          ): Promise<string> => {
+            // 1. Optimize Character Data (Token Reduction Strategy)
+            const optimizedCharacters = data.characters?.map(c => 
+              `- ${c.name} (${c.role}): ${c.description} [性格核心: ${c.personality?.slice(0, 50) || '未设定'}]`
+            ).join('\n') || "暂无具体角色设定";
+          
+            // 2. Construct the Context
+            let finalPrompt = '';
+            
+            const contextBlock = `
+          【核心灵感】：${data.spark}
+          ${data.core ? `【故事内核】：${data.core}` : ''}
+          ${data.synopsis ? `【故事概要】：${data.synopsis}` : ''}
+          
+          【世界观规则】：
+          ${data.worldview ? data.worldview.slice(0, 1000) + (data.worldview.length > 1000 ? '...(略)' : '') : '暂无详细设定'}
+          
+          【核心角色阵容】：
+          ${optimizedCharacters}
+          
+          ${data.storyline ? `【参考故事线】：\n${data.storyline}` : ''}
+            `.trim();
+          
+            if (customTemplate) {
+              finalPrompt = customTemplate
+                .replace(/{{context}}/g, contextBlock)
+                .replace(/{{spark}}/g, data.spark)
+                .replace(/{{storyline}}/g, data.storyline || '')
+                .replace(/{{worldview}}/g, data.worldview || '')
+                .replace(/{{characters}}/g, optimizedCharacters);
+            } else {
+              finalPrompt = `
+                ${contextBlock}
+          
+                --- 任务指令 ---
+                请综合以上素材，创作一份详尽的**全书大纲**。
+                
+                **输出格式要求（必须严格遵守）**：
+                
+                # 全书大纲
+                
+                ## 一、故事主线
+                （在此处用精炼的语言概括贯穿全书的核心剧情线索，约300-500字。）
+                
+                ## 二、分卷细纲
+                
+                ### 第一卷：[卷名]
+                **主要内容**：
+                （详细描述本卷的主线剧情发展，核心冲突与高潮。）
+                **支线内容**：
+                （描述本卷并行的支线剧情，如配角成长、感情线、隐藏伏笔等。）
+                
+                ### 第二卷：[卷名]
+                **主要内容**：...
+                **支线内容**：...
+                
+                （后续分卷以此类推...）
+                
+                **内容要求**：
+                1. **深度融合**：剧情必须体现【角色】的性格特征和【世界观】的独特规则。
+                2. **结构严谨**：采用分卷结构，确保每一卷都有明确的起承转合。
+                3. **主次分明**：主要内容要紧扣核心冲突，支线内容要丰富世界观和人物关系。
+                
+                请以 Markdown 格式输出。
+              `;
+            }
+          
+            const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
+          
+            try {
+              if (modelConfig.provider === 'gemini') {
+                initializeGemini(modelConfig.apiKey);
+                if (!geminiClient) throw new Error("API Key missing.");
+          
+                const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+                  model: modelConfig.modelName || 'gemini-2.5-flash',
+                  contents: finalPrompt,
+                  config: {
+                    systemInstruction,
+                    temperature: 0.7,
+                    maxOutputTokens: 8192,
+                  }
+                }));
+                return response.text || "未能生成大纲。";
+              } else {
+                // Ensure sufficient tokens for full outline
+                const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
+                return await callOpenAICompatible(
+                  configWithHighTokens,
+                  [{ role: 'user', content: finalPrompt }],
+                  systemInstruction
+                );
+              }
+            } catch (error) {
+              console.error("Generate Outline Error:", error);
+              throw new Error(`生成大纲失败: ${(error as Error).message}`);
+            }
+          };
