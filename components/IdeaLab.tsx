@@ -68,6 +68,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   const [volumeContent, setVolumeContent] = useState('');
   const [splitChapterCount, setSplitChapterCount] = useState(3);
+  const [startChapterNum, setStartChapterNum] = useState(1); // New state for start chapter
   const [showSplitHistory, setShowSplitHistory] = useState(false);
   const [currentSplit, setCurrentSplit] = useState<BeatsSplit | null>(null);
 
@@ -160,6 +161,41 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const worldPrompts = prompts.filter(p => p.category === 'world');
   const outlinePrompts = prompts.filter(p => p.category === 'outline');
   const beatsPrompts = prompts.filter(p => p.category === 'beats');
+
+  // Linked Book Reference State (New)
+  const [selectedRefChapterIds, setSelectedRefChapterIds] = useState<string[]>([]);
+  const [showRefChapterSelector, setShowRefChapterSelector] = useState(false);
+
+  // Helper to get linked book chapters
+  const linkedBook = activeIdea && activeIdea.linkedBookId ? books.find(b => b.id === activeIdea.linkedBookId) : null;
+  const availableRefChapters = linkedBook?.chapters || [];
+
+  const toggleRefChapter = (id: string) => {
+    setSelectedRefChapterIds(prev => 
+      prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    );
+  };
+  
+  // Auto-calculate start chapter when active idea changes or sync data updates
+  useEffect(() => {
+    if (!activeIdea) return;
+    
+    // Only recalculate if we haven't manually set it (optional optimization, but here we sync with history)
+    // Actually, we want to update it when we switch ideas.
+    
+    let next = (activeIdea.lastSplitChapterNum || 0) + 1;
+    
+    if (activeIdea.linkedBookId && books && books.length > 0) {
+        const linkedBook = books.find(b => b.id === activeIdea.linkedBookId);
+        if (linkedBook) {
+             const bookNext = (linkedBook.chapters?.length || 0) + 1;
+             if (bookNext > next) {
+                 next = bookNext;
+             }
+        }
+    }
+    setStartChapterNum(next);
+  }, [activeIdea?.id, activeIdea?.lastSplitChapterNum, activeIdea?.linkedBookId, books]);
 
   const handleGenerateCoreAndSynopsis = async () => {
     if (!activeIdea || isGenerating) return;
@@ -533,7 +569,20 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!modelConfig) throw new Error('没有配置模型');
 
       const customTemplate = beatsPromptId !== 'default' ? beatsPrompts.find(p => p.id === beatsPromptId)?.template : undefined;
-      let startChapter = (activeIdea.lastSplitChapterNum || 0) + 1;
+      
+      // Use the user-configurable start chapter
+      const startChapter = startChapterNum;
+
+      // Extract Reference Context
+      let referenceContext = '';
+      if (linkedBook && selectedRefChapterIds.length > 0) {
+          const selectedChapters = linkedBook.chapters.filter(c => selectedRefChapterIds.includes(c.id));
+          // Sort by original order (assuming chapters array is ordered, or we could sort by index if needed)
+          // Here we just keep the order found in chapters array which is usually chronological
+          referenceContext = selectedChapters.map(c => 
+             `### ${c.title}\n(概要: ${c.summary || '无'})\n${c.content ? c.content.slice(-1000) : ''}` // Take last 1000 chars of content for context
+          ).join('\n\n');
+      }
 
       const beats = await generateBeatsFromVolumeContent(
         { ...modelConfig, modelName: stageModels.beats },
@@ -545,7 +594,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
           core: activeIdea.storyCore,
           synopsis: activeIdea.storySynopsis,
           worldview: activeIdea.worldview,
-          characters: activeIdea.characters
+          characters: activeIdea.characters,
+          referenceContext: referenceContext // Pass reference context
         },
         customTemplate
       );
@@ -611,6 +661,54 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       // If strict sync is needed, we'd need to filter chapterBeats too. 
       // For now, let's keep it simple as a history log management.
     });
+  };
+
+  const handlePushBeatsToBook = () => {
+    if (!activeIdea || !activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0) return;
+
+    if (!activeIdea.linkedBookId) {
+        if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
+            onConvertToBook(activeIdea);
+            // After conversion, the idea should be updated with linkedBookId, but we might need to wait or rely on user to click again.
+            // For simplicity in this flow, onConvertToBook usually switches context or updates state.
+            // But let's just alert user to try again after conversion logic handles it.
+        }
+        return;
+    }
+
+    if (!onPushChapters) {
+        alert("无法推送到作品：功能未连接");
+        return;
+    }
+
+    const newChapters: Chapter[] = activeIdea.chapterBeats.map((beat, idx) => {
+        // Format scenes into content
+        let content = '';
+        if (beat.scenes && beat.scenes.length > 0) {
+            content = beat.scenes.map(scene => 
+                `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
+            ).join('\n\n');
+        } else {
+            content = beat.summary || '';
+        }
+
+        // Add extra metadata to summary if needed
+        const summary = beat.summary + 
+            (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') + 
+            (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+
+        return {
+            id: Date.now().toString() + '_' + idx,
+            title: beat.chapterTitle,
+            summary: summary,
+            content: content // Initial draft content from scenes
+        };
+    });
+
+    if (window.confirm(`即将推送 ${newChapters.length} 个章节到关联作品。确定吗？`)) {
+        onPushChapters(activeIdea.linkedBookId, newChapters);
+        alert("章节已成功推送到作品目录！");
+    }
   };
 
   // Helper for Prompt Selector UI
@@ -1354,6 +1452,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   </div>
                   <div className="flex items-center gap-3">
                     <ModelSelector stage="beats" />
+                    <button
+                      onClick={handlePushBeatsToBook}
+                      disabled={!activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-green-500/20"
+                      title="将当前所有细纲章节推送到关联作品的目录中"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      推送至作品
+                    </button>
                   </div>
                 </div>
 
@@ -1415,18 +1522,80 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                         )}
                       </div>
 
-                      <div className="space-y-3">
-                        <label className="text-sm font-medium text-gray-300">预计拆分为</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={splitChapterCount}
-                            onChange={(e) => setSplitChapterCount(parseInt(e.target.value))}
-                            className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500/30"
-                            min="1"
-                            max="50"
-                          />
-                          <span className="text-gray-500 text-sm">章</span>
+                      {/* Reference Chapter Selector (New) */}
+                      {linkedBook && availableRefChapters.length > 0 && (
+                          <div className="space-y-3 pt-3 border-t border-gray-800">
+                             <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
+                                <div className="flex items-center">
+                                   <LinkIcon className="w-4 h-4 mr-2 text-indigo-400" />
+                                   参考书籍章节
+                                </div>
+                                <span className="text-xs text-gray-500">
+                                   已选 {selectedRefChapterIds.length} 章
+                                </span>
+                             </label>
+                             
+                             <div className="space-y-2">
+                                <button
+                                   onClick={() => setShowRefChapterSelector(!showRefChapterSelector)}
+                                   className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400 text-left flex items-center justify-between hover:border-gray-700 transition-colors"
+                                >
+                                   <span>
+                                     {selectedRefChapterIds.length > 0 
+                                       ? `参考: ${availableRefChapters.find(c => c.id === selectedRefChapterIds[0])?.title.substring(0, 15)}... 等` 
+                                       : '点击选择参考章节 (可选)'}
+                                   </span>
+                                   {showRefChapterSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+
+                                {showRefChapterSelector && (
+                                   <div className="bg-gray-950 border border-gray-800 rounded-lg max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                      {availableRefChapters.slice().reverse().map(chapter => (
+                                         <div 
+                                            key={chapter.id} 
+                                            onClick={() => toggleRefChapter(chapter.id)}
+                                            className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${
+                                               selectedRefChapterIds.includes(chapter.id) 
+                                                 ? 'bg-indigo-900/30 text-indigo-300' 
+                                                 : 'hover:bg-gray-800 text-gray-400'
+                                            }`}
+                                         >
+                                            <div className={`w-3 h-3 rounded border flex items-center justify-center ${
+                                               selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
+                                            }`}>
+                                               {selectedRefChapterIds.includes(chapter.id) && <Check className="w-2 h-2 text-white" />}
+                                            </div>
+                                            <span className="truncate">{chapter.title}</span>
+                                         </div>
+                                      ))}
+                                   </div>
+                                )}
+                             </div>
+                          </div>
+                      )}
+
+                      <div className="space-y-4">
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium text-gray-300">起始章节号</label>
+                            <input
+                                type="number"
+                                value={startChapterNum}
+                                onChange={(e) => setStartChapterNum(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                                min="1"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium text-gray-300">预计拆分章数</label>
+                            <input
+                                type="number"
+                                value={splitChapterCount}
+                                onChange={(e) => setSplitChapterCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                                min="1"
+                                max="50"
+                            />
                         </div>
                       </div>
 
@@ -1513,6 +1682,27 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                 </div>
                               </div>
                             </div>
+
+                            {/* Scene Breakdown */}
+                            {beat.scenes && beat.scenes.length > 0 && (
+                                <div className="mt-6 border-t border-gray-800 pt-4">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center">
+                                      <List className="w-3 h-3 mr-1.5" />
+                                      场景细化
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {beat.scenes.map((scene, sIdx) => (
+                                            <div key={sIdx} className="bg-gray-950/30 border border-gray-800/50 rounded-lg p-3 text-sm hover:border-indigo-500/30 transition-colors">
+                                                <div className="flex justify-between items-start mb-1.5">
+                                                    <span className="font-bold text-gray-300">{scene.sceneTitle}</span>
+                                                    <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono">{scene.wordCount}</span>
+                                                </div>
+                                                <p className="text-gray-400 text-xs leading-relaxed">{scene.detail}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                           </div>
                         ))}
                       </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Wand2, Loader2, ChevronDown, Cpu } from 'lucide-react';
 import { Chapter, PromptTemplate, PromptCategory, ModelConfig } from '../types';
 
@@ -39,6 +39,16 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
     const [selectedCategory, setSelectedCategory] = useState<PromptCategory | ''>('');
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [selectedModelId, setSelectedModelId] = useState<string>(defaultModelId);
+
+    // Sync state with props when modal opens or chapter changes
+    useEffect(() => {
+        if (isOpen) {
+            setSummary(chapter.summary || '');
+            setSelectedModelId(defaultModelId);
+            setSelectedCategory('');
+            setSelectedTemplateId('');
+        }
+    }, [isOpen, chapter.id, chapter.summary, defaultModelId]);
 
     if (!isOpen) return null;
 

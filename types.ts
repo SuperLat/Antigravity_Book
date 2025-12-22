@@ -54,11 +54,18 @@ export interface PromptTemplate {
 
 // --- Idea Lab Interfaces ---
 
+export interface ChapterScene {
+  sceneTitle: string;
+  detail: string;
+  wordCount: string;
+}
+
 export interface ChapterBeat {
   chapterTitle: string;
   summary: string;
   keyCharacters: string[];
   conflict: string;
+  scenes?: ChapterScene[];
 }
 
 // 细纲拆分记录

@@ -1,10 +1,17 @@
 const mongoose = require('mongoose');
 
+const ChapterSceneSchema = new mongoose.Schema({
+    sceneTitle: { type: String, required: true },
+    detail: { type: String, required: true },
+    wordCount: { type: String }
+});
+
 const ChapterBeatSchema = new mongoose.Schema({
     chapterTitle: { type: String, required: true },
     summary: { type: String, required: true },
     keyCharacters: [String],
-    conflict: { type: String, required: true }
+    conflict: { type: String, required: true },
+    scenes: [ChapterSceneSchema]
 });
 
 const PartSchema = new mongoose.Schema({

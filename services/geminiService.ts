@@ -1001,12 +1001,13 @@ export const generateBeatsFromVolumeContent = async (
     synopsis?: string;
     worldview?: string;
     characters?: CharacterProfile[];
+    referenceContext?: string; // New: Context from reference chapters
   },
   customTemplate?: string
 ): Promise<ChapterBeat[]> => {
   let promptContent = '';
   
-  const { volumeContent, chapterCount, startChapter } = context;
+  const { volumeContent, chapterCount, startChapter, referenceContext } = context;
 
   // Optimize Character Data
   const optimizedCharacters = context.characters?.map(c => 
@@ -1023,6 +1024,8 @@ ${context.worldview ? context.worldview.slice(0, 500) + '...' : '暂无详细设
 
 【核心角色】：
 ${optimizedCharacters}
+
+${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` : ''}
   `.trim();
 
   if (customTemplate) {
@@ -1030,7 +1033,8 @@ ${optimizedCharacters}
       .replace(/{{volumeContent}}/g, volumeContent)
       .replace(/{{input}}/g, volumeContent)
       .replace(/{{chapterCount}}/g, String(chapterCount))
-      .replace(/{{startChapter}}/g, String(startChapter));
+      .replace(/{{startChapter}}/g, String(startChapter))
+      .replace(/{{reference}}/g, referenceContext || '');
   } else {
     promptContent = `
       ${contextBlock}
@@ -1039,13 +1043,15 @@ ${optimizedCharacters}
       ${volumeContent}
 
       --- 任务指令 ---
-      请结合上述【世界观】、【角色】和【故事背景】，将【待拆解的分卷内容】拆分为 ${chapterCount} 个连续的章节细纲。
+      请结合上述【世界观】、【角色】、【前文剧情】和【故事背景】，将【待拆解的分卷内容】拆分为 ${chapterCount} 个连续的章节细纲。
       章节编号从第 ${startChapter} 章开始，到第 ${startChapter + chapterCount - 1} 章。
       
       要求：
-      1. 每个章节要有具体的情节推进，必须符合人物性格和世界观逻辑。
-      2. 章节之间要有连贯性，承上启下。
-      3. 明确标出每一章的核心冲突和出场关键角色。
+      1. **承接上文**：如果提供了【前文剧情/参考章节】，请确保生成的章节与其无缝衔接，保持情节和人物状态的连贯性。
+      2. **章节细化**：每个章节必须拆分为 5-6 个具体的对话场景。
+      3. **场景描述**：简述每个场景中对话要交代的关键线索或冲突点。
+      4. **字数规划**：为每个场景规划字数分配，确保全章总字数在 2500 字左右（例如：场景一 400字，场景二 500字...）。
+      5. **核心冲突**：明确标出每一章的核心冲突和出场关键角色。
     `;
   }
 
@@ -1059,13 +1065,22 @@ ${optimizedCharacters}
         "chapterTitle": "第${startChapter}章：具体标题",
         "summary": "本章的具体事件摘要...",
         "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点"
+        "conflict": "核心冲突点",
+        "scenes": [
+          {
+             "sceneTitle": "场景一：场景简述",
+             "detail": "关键线索或冲突点描述...",
+             "wordCount": "400字"
+          },
+          ...
+        ]
       },
       {
         "chapterTitle": "第${startChapter + 1}章：具体标题",
         "summary": "下一章的具体事件摘要...",
         "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点"
+        "conflict": "核心冲突点",
+        "scenes": [...]
       }
     ]
     
@@ -1113,6 +1128,33 @@ ${optimizedCharacters}
     try {
       return JSON.parse(jsonStr) as ChapterBeat[];
     } catch (parseError) {
+       console.warn("Initial JSON parse failed, attempting iterative recovery for truncated JSON...");
+       
+       // Iterative Recovery Logic:
+       // Repeatedly try to cut off the last '}' and append ']' until valid JSON is formed.
+       // This effectively discards incomplete nested structures or incomplete last items.
+       let currentStr = jsonStr;
+       let attempts = 0;
+       const MAX_ATTEMPTS = 50; // Prevent infinite loops for very large or malformed strings
+
+       while (currentStr.lastIndexOf('}') !== -1 && attempts < MAX_ATTEMPTS) {
+           attempts++;
+           const lastBraceIdx = currentStr.lastIndexOf('}');
+           
+           // Keep everything up to this last brace
+           currentStr = currentStr.substring(0, lastBraceIdx + 1);
+           const attemptStr = currentStr + ']';
+           
+           try {
+               const recoveredData = JSON.parse(attemptStr) as ChapterBeat[];
+               console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
+               return recoveredData;
+           } catch (e) {
+               // If this attempt failed, strip the last brace we just tried and continue searching backwards
+               currentStr = currentStr.substring(0, currentStr.length - 1);
+           }
+       }
+
        console.error("JSON Parse Error. Raw Text:", text);
        throw new Error(`AI 返回格式错误，无法解析细纲数据。`);
     }
