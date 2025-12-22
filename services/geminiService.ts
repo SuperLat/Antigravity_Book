@@ -80,7 +80,7 @@ const callOpenAICompatible = async (
 
   // --- 火山引擎/DeepSeek 特有配置开关 ---
   // 使用前端传入的配置，默认为 false (disabled)
-  const ENABLE_DEEPSEEK_THINKING = modelConfig.enableThinking ?? false; 
+  const ENABLE_DEEPSEEK_THINKING = modelConfig.enableThinking ?? false;
 
   // 检测是否为 DeepSeek 系列模型 (兼容 deekseep 拼写)
   const isDeepSeek = /deepseek|deekseep/i.test(modelConfig.modelName);
@@ -211,7 +211,7 @@ export const generateVolumesFromOutline = async (
 
   const volumes: { title: string; summary: string }[] = [];
 
-  
+
 
   // Regex to match headers.
 
@@ -229,7 +229,7 @@ export const generateVolumesFromOutline = async (
 
   const matches = [...outline.matchAll(headerRegex)];
 
-  
+
 
   if (matches.length > 0) {
 
@@ -241,17 +241,17 @@ export const generateVolumesFromOutline = async (
 
       const title = match[0].replace(/^[#\s]+/, '').trim();
 
-      
+
 
       const startIndex = match.index! + match[0].length;
 
       const endIndex = (i < matches.length - 1) ? matches[i + 1].index! : outline.length;
 
-      
+
 
       const summary = outline.substring(startIndex, endIndex).trim();
 
-      
+
 
       if (title) {
 
@@ -267,9 +267,9 @@ export const generateVolumesFromOutline = async (
 
   if (volumes.length === 0) {
 
-     console.warn("No volumes found via Regex extraction in outline:", outline.substring(0, 100));
+    console.warn("No volumes found via Regex extraction in outline:", outline.substring(0, 100));
 
-     throw new Error("无法从大纲中提取分卷信息。\n\n请确保大纲包含清晰的分卷标题，例如：\n“### 第一卷：风起云涌”\n“# 卷一 初始”\n“Volume 1: The Beginning”");
+    throw new Error("无法从大纲中提取分卷信息。\n\n请确保大纲包含清晰的分卷标题，例如：\n“### 第一卷：风起云涌”\n“# 卷一 初始”\n“Volume 1: The Beginning”");
 
   }
 
@@ -440,8 +440,8 @@ export const generateNovelContent = async ({
   // 1.5 Construct Context from selected Chapters (Limit content length to avoid token overflow)
   const chapterBlock = selectedChapters.map(c => {
     // Take the last 3000 characters of the referenced chapter to keep context relevant but manageable
-    const contentPreview = c.content.length > 3000 
-      ? `...(前文省略)\n${c.content.slice(-3000)}` 
+    const contentPreview = c.content.length > 3000
+      ? `...(前文省略)\n${c.content.slice(-3000)}`
       : c.content;
     return `【参考章节 - ${c.title}】\n${contentPreview}`;
   }).join('\n\n');
@@ -586,7 +586,7 @@ ${options?.background ? `- 故事背景：${options.background}` : ''}
           responseMimeType: "application/json"
         }
       }));
-      
+
       // Handle both property and method access for text
       text = typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
     } else {
@@ -602,7 +602,7 @@ ${options?.background ? `- 故事背景：${options.background}` : ''}
     try {
       const jsonStr = extractJson(text);
       const data = JSON.parse(jsonStr);
-      
+
       // Map potential different key names
       return {
         core: data.core || data.storyCore || data.story_core || data.内核 || "",
@@ -797,7 +797,7 @@ export const generateDetailedWorldview = async (
   customTemplate?: string
 ): Promise<string> => {
   const lengthLabel = context.storyLength === 'short' ? '短篇故事' : '长篇小说';
-  
+
   const prompt = customTemplate
     ? customTemplate.replace('{{storyLength}}', lengthLabel)
     : `
@@ -857,7 +857,7 @@ export const generateOutlineFromWorldview = async (
   } else {
     // 动态构建 Prompt，如果 worldview 为空则不强调它
     const worldviewSection = worldview ? `【世界观设定】：${worldview}` : '';
-    
+
     finalPrompt = `
       【核心梗】：${spark}
       ${worldviewSection}
@@ -961,8 +961,9 @@ export const generateChapterBeatsFromOutline = async (
       }));
       text = response.text || "[]";
     } else {
+      const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
       const result = await callOpenAICompatible(
-        modelConfig,
+        configWithHighTokens,
         [{ role: 'user', content: finalPrompt }],
         systemInstruction
       );
@@ -971,7 +972,7 @@ export const generateChapterBeatsFromOutline = async (
 
     // Clean up potential markdown code blocks
     let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-    
+
     const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
     if (arrayMatch) {
       jsonStr = arrayMatch[0];
@@ -1006,11 +1007,11 @@ export const generateBeatsFromVolumeContent = async (
   customTemplate?: string
 ): Promise<ChapterBeat[]> => {
   let promptContent = '';
-  
+
   const { volumeContent, chapterCount, startChapter, referenceContext } = context;
 
   // Optimize Character Data
-  const optimizedCharacters = context.characters?.map(c => 
+  const optimizedCharacters = context.characters?.map(c =>
     `- ${c.name} (${c.role}): ${c.description}`
   ).join('\n') || "暂无具体角色设定";
 
@@ -1052,6 +1053,7 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
       3. **场景描述**：简述每个场景中对话要交代的关键线索或冲突点。
       4. **字数规划**：为每个场景规划字数分配，确保全章总字数在 2500 字左右（例如：场景一 400字，场景二 500字...）。
       5. **核心冲突**：明确标出每一章的核心冲突和出场关键角色。
+      6. **严禁合并**：必须严格按照要求的 ${chapterCount} 章进行拆解。即便提供的【待拆解内容】较短，也请发挥想象力进行合理的逻辑扩充和细节填充，绝对不允许减少或合并章节。
     `;
   }
 
@@ -1108,8 +1110,9 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
       }));
       text = response.text || "[]";
     } else {
+      const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
       const result = await callOpenAICompatible(
-        modelConfig,
+        configWithHighTokens,
         [{ role: 'user', content: finalPrompt }],
         systemInstruction
       );
@@ -1118,7 +1121,7 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
 
     // Clean up potential markdown code blocks
     let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-    
+
     // Attempt to extract JSON array
     const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
     if (arrayMatch) {
@@ -1128,35 +1131,35 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
     try {
       return JSON.parse(jsonStr) as ChapterBeat[];
     } catch (parseError) {
-       console.warn("Initial JSON parse failed, attempting iterative recovery for truncated JSON...");
-       
-       // Iterative Recovery Logic:
-       // Repeatedly try to cut off the last '}' and append ']' until valid JSON is formed.
-       // This effectively discards incomplete nested structures or incomplete last items.
-       let currentStr = jsonStr;
-       let attempts = 0;
-       const MAX_ATTEMPTS = 50; // Prevent infinite loops for very large or malformed strings
+      console.warn("Initial JSON parse failed, attempting iterative recovery for truncated JSON...");
 
-       while (currentStr.lastIndexOf('}') !== -1 && attempts < MAX_ATTEMPTS) {
-           attempts++;
-           const lastBraceIdx = currentStr.lastIndexOf('}');
-           
-           // Keep everything up to this last brace
-           currentStr = currentStr.substring(0, lastBraceIdx + 1);
-           const attemptStr = currentStr + ']';
-           
-           try {
-               const recoveredData = JSON.parse(attemptStr) as ChapterBeat[];
-               console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
-               return recoveredData;
-           } catch (e) {
-               // If this attempt failed, strip the last brace we just tried and continue searching backwards
-               currentStr = currentStr.substring(0, currentStr.length - 1);
-           }
-       }
+      // Iterative Recovery Logic:
+      // Repeatedly try to cut off the last '}' and append ']' until valid JSON is formed.
+      // This effectively discards incomplete nested structures or incomplete last items.
+      let currentStr = jsonStr;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 50; // Prevent infinite loops for very large or malformed strings
 
-       console.error("JSON Parse Error. Raw Text:", text);
-       throw new Error(`AI 返回格式错误，无法解析细纲数据。`);
+      while (currentStr.lastIndexOf('}') !== -1 && attempts < MAX_ATTEMPTS) {
+        attempts++;
+        const lastBraceIdx = currentStr.lastIndexOf('}');
+
+        // Keep everything up to this last brace
+        currentStr = currentStr.substring(0, lastBraceIdx + 1);
+        const attemptStr = currentStr + ']';
+
+        try {
+          const recoveredData = JSON.parse(attemptStr) as ChapterBeat[];
+          console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
+          return recoveredData;
+        } catch (e) {
+          // If this attempt failed, strip the last brace we just tried and continue searching backwards
+          currentStr = currentStr.substring(0, currentStr.length - 1);
+        }
+      }
+
+      console.error("JSON Parse Error. Raw Text:", text);
+      throw new Error(`AI 返回格式错误，无法解析细纲数据。`);
     }
   } catch (error) {
     console.error("JSON Parse Error or AI Error", error);
@@ -1182,7 +1185,7 @@ export const generateCharactersFromIdea = async (
   let promptContent = '';
 
   const { requirements } = context;
-  const countReq = requirements 
+  const countReq = requirements
     ? `请严格生成以下数量的角色：主角 ${requirements.protagonist} 人，反派 ${requirements.antagonist} 人，重要配角 ${requirements.supporting} 人。`
     : "请基于以上故事设定，设计 3-5 个核心角色（包括主角和关键配角/反派）。";
 
@@ -1208,9 +1211,9 @@ export const generateCharactersFromIdea = async (
             3. 角色之间要有充满张力的关系。
             4. 请精简输出，【背景故事】和【性格描述】请严格控制在 100 字以内，避免过长导致内容截断。
           `;
-        }
-      
-        const finalPrompt = `
+  }
+
+  const finalPrompt = `
           ${promptContent}
           
           IMPORTANT:
@@ -1229,94 +1232,94 @@ export const generateCharactersFromIdea = async (
             ...
           ]
         `;
-      
-        const systemInstruction = "你是一个擅长创造鲜活角色的人物设计师。请设计有血有肉、动机合理的角色。仅返回纯 JSON 数据。";
-      
+
+  const systemInstruction = "你是一个擅长创造鲜活角色的人物设计师。请设计有血有肉、动机合理的角色。仅返回纯 JSON 数据。";
+
+  try {
+    let text = '';
+
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json"
+        }
+      }));
+      text = response.text || "[]";
+    } else {
+      const result = await callOpenAICompatible(
+        modelConfig,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+      text = result;
+    }
+
+    // Clean up potential markdown code blocks and whitespace
+    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+
+    // Ensure start from the first bracket
+    const startIdx = jsonStr.indexOf('[');
+    if (startIdx !== -1) {
+      jsonStr = jsonStr.substring(startIdx);
+    }
+
+    try {
+      return JSON.parse(jsonStr) as Omit<CharacterProfile, 'id'>[];
+    } catch (parseError) {
+      console.warn("Initial JSON parse failed, attempting recovery for truncated JSON...");
+
+      // Recovery Logic: Try to find the last closing brace '}' and close the array
+      const lastBraceIdx = jsonStr.lastIndexOf('}');
+      if (lastBraceIdx !== -1) {
+        // Take everything up to the last object end, and assume it's an array that needs closing
+        const recoveredStr = jsonStr.substring(0, lastBraceIdx + 1) + ']';
         try {
-          let text = '';
-      
-          if (modelConfig.provider === 'gemini') {
-            initializeGemini(modelConfig.apiKey);
-            if (!geminiClient) throw new Error("API Key missing.");
-      
-            const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-              model: modelConfig.modelName || 'gemini-2.5-flash',
-              contents: finalPrompt,
-              config: {
-                systemInstruction,
-                temperature: 0.8,
-                maxOutputTokens: 8192, 
-                responseMimeType: "application/json"
-              }
-            }));
-            text = response.text || "[]";
-          } else {
-            const result = await callOpenAICompatible(
-              modelConfig,
-              [{ role: 'user', content: finalPrompt }],
-              systemInstruction
-            );
-            text = result;
-          }
-      
-          // Clean up potential markdown code blocks and whitespace
-          let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-          
-          // Ensure start from the first bracket
-          const startIdx = jsonStr.indexOf('[');
-          if (startIdx !== -1) {
-            jsonStr = jsonStr.substring(startIdx);
-          }
-      
-              try {
-                return JSON.parse(jsonStr) as Omit<CharacterProfile, 'id'>[];
-              } catch (parseError) {
-                console.warn("Initial JSON parse failed, attempting recovery for truncated JSON...");
-                
-                // Recovery Logic: Try to find the last closing brace '}' and close the array
-                const lastBraceIdx = jsonStr.lastIndexOf('}');
-                if (lastBraceIdx !== -1) {
-                  // Take everything up to the last object end, and assume it's an array that needs closing
-                  const recoveredStr = jsonStr.substring(0, lastBraceIdx + 1) + ']';
-                  try {
-                     const recoveredData = JSON.parse(recoveredStr) as Omit<CharacterProfile, 'id'>[];
-                     console.log("JSON recovery successful. Items recovered:", recoveredData.length);
-                     return recoveredData;
-                  } catch (recoveryError) {
-                     console.error("JSON recovery failed.");
-                  }
-                }
-          
-                console.error("JSON Parse Error. Raw Text:", text);
-                throw new Error(`AI 返回格式错误，无法解析角色数据。原始响应片段: ${text.slice(0, 100)}...`);
-              }
-            } catch (error) {
-              console.error("Generate Characters Error:", error);
-              throw new Error(`生成角色失败: ${(error as Error).message}`);
-            }
-          };
-          
-          export const generateCompleteOutline = async (
-            modelConfig: ModelConfig,
-            data: {
-              spark: string;
-              core?: string;
-              synopsis?: string;
-              storyline?: string;
-              worldview?: string;
-              characters?: CharacterProfile[];
-            },
-            customTemplate?: string
-          ): Promise<string> => {
-            // 1. Optimize Character Data (Token Reduction Strategy)
-            const optimizedCharacters = data.characters?.map(c => 
-              `- ${c.name} (${c.role}): ${c.description} [性格核心: ${c.personality?.slice(0, 50) || '未设定'}]`
-            ).join('\n') || "暂无具体角色设定";
-          
-            // 2. Construct the Context
-            let finalPrompt = '';
-            
-            const contextBlock = `
+          const recoveredData = JSON.parse(recoveredStr) as Omit<CharacterProfile, 'id'>[];
+          console.log("JSON recovery successful. Items recovered:", recoveredData.length);
+          return recoveredData;
+        } catch (recoveryError) {
+          console.error("JSON recovery failed.");
+        }
+      }
+
+      console.error("JSON Parse Error. Raw Text:", text);
+      throw new Error(`AI 返回格式错误，无法解析角色数据。原始响应片段: ${text.slice(0, 100)}...`);
+    }
+  } catch (error) {
+    console.error("Generate Characters Error:", error);
+    throw new Error(`生成角色失败: ${(error as Error).message}`);
+  }
+};
+
+export const generateCompleteOutline = async (
+  modelConfig: ModelConfig,
+  data: {
+    spark: string;
+    core?: string;
+    synopsis?: string;
+    storyline?: string;
+    worldview?: string;
+    characters?: CharacterProfile[];
+  },
+  customTemplate?: string
+): Promise<string> => {
+  // 1. Optimize Character Data (Token Reduction Strategy)
+  const optimizedCharacters = data.characters?.map(c =>
+    `- ${c.name} (${c.role}): ${c.description} [性格核心: ${c.personality?.slice(0, 50) || '未设定'}]`
+  ).join('\n') || "暂无具体角色设定";
+
+  // 2. Construct the Context
+  let finalPrompt = '';
+
+  const contextBlock = `
           【核心灵感】：${data.spark}
           ${data.core ? `【故事内核】：${data.core}` : ''}
           ${data.synopsis ? `【故事概要】：${data.synopsis}` : ''}
@@ -1329,16 +1332,16 @@ export const generateCharactersFromIdea = async (
           
           ${data.storyline ? `【参考故事线】：\n${data.storyline}` : ''}
             `.trim();
-          
-            if (customTemplate) {
-              finalPrompt = customTemplate
-                .replace(/{{context}}/g, contextBlock)
-                .replace(/{{spark}}/g, data.spark)
-                .replace(/{{storyline}}/g, data.storyline || '')
-                .replace(/{{worldview}}/g, data.worldview || '')
-                .replace(/{{characters}}/g, optimizedCharacters);
-            } else {
-              finalPrompt = `
+
+  if (customTemplate) {
+    finalPrompt = customTemplate
+      .replace(/{{context}}/g, contextBlock)
+      .replace(/{{spark}}/g, data.spark)
+      .replace(/{{storyline}}/g, data.storyline || '')
+      .replace(/{{worldview}}/g, data.worldview || '')
+      .replace(/{{characters}}/g, optimizedCharacters);
+  } else {
+    finalPrompt = `
                 ${contextBlock}
           
                 --- 任务指令 ---
@@ -1372,36 +1375,36 @@ export const generateCharactersFromIdea = async (
                 
                 请以 Markdown 格式输出。
               `;
-            }
-          
-            const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
-          
-            try {
-              if (modelConfig.provider === 'gemini') {
-                initializeGemini(modelConfig.apiKey);
-                if (!geminiClient) throw new Error("API Key missing.");
-          
-                const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-                  model: modelConfig.modelName || 'gemini-2.5-flash',
-                  contents: finalPrompt,
-                  config: {
-                    systemInstruction,
-                    temperature: 0.7,
-                    maxOutputTokens: 8192,
-                  }
-                }));
-                return response.text || "未能生成大纲。";
-              } else {
-                // Ensure sufficient tokens for full outline
-                const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
-                return await callOpenAICompatible(
-                  configWithHighTokens,
-                  [{ role: 'user', content: finalPrompt }],
-                  systemInstruction
-                );
-              }
-            } catch (error) {
-              console.error("Generate Outline Error:", error);
-              throw new Error(`生成大纲失败: ${(error as Error).message}`);
-            }
-          };
+  }
+
+  const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: finalPrompt,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+        }
+      }));
+      return response.text || "未能生成大纲。";
+    } else {
+      // Ensure sufficient tokens for full outline
+      const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
+      return await callOpenAICompatible(
+        configWithHighTokens,
+        [{ role: 'user', content: finalPrompt }],
+        systemInstruction
+      );
+    }
+  } catch (error) {
+    console.error("Generate Outline Error:", error);
+    throw new Error(`生成大纲失败: ${(error as Error).message}`);
+  }
+};

@@ -502,7 +502,7 @@ const App: React.FC = () => {
     setBooks(prev => [...prev, newBook]);
     // Link the idea to the new book automatically
     handleUpdateIdea(idea.id, { linkedBookId: newBook.id });
-    
+
     alert(`成功将《${idea.title}》转化为书籍！所有灵感数据已保存至设定集。`);
     setDashboardTab('bookshelf');
   };
@@ -731,10 +731,14 @@ const App: React.FC = () => {
         throw new Error('没有配置模型,请在设置中添加模型。');
       }
 
-      // Find the previous chapter's summary
+      // 优化：如果用户已经手动选择了关联章节，则不再自动注入上一章概要，避免内容冗余
       const currentChapterIndex = activeBook.chapters.findIndex(c => c.id === activeChapterId);
       const previousChapter = currentChapterIndex > 0 ? activeBook.chapters[currentChapterIndex - 1] : null;
-      const previousChapterSummary = previousChapter?.summary || '（无）';
+
+      // 只有在没有手动关联章节时，才自动提供上一章概要
+      const previousChapterSummary = selectedChapters.length === 0
+        ? (previousChapter?.summary || '（无）')
+        : undefined;
 
       const responseText = await generateNovelContent({
         modelConfig: modelConfig,
@@ -888,7 +892,7 @@ const App: React.FC = () => {
                       .filter(line => line.length > 0)
                       // Join with double newline for paragraph spacing
                       .join('\n\n');
-                    
+
                     handleUpdateChapterContent(formatted);
                   }}
                 />

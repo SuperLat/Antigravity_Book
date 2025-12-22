@@ -89,10 +89,17 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // Expanded states for history items
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
+  const [expandedBeatIndices, setExpandedBeatIndices] = useState<number[]>([]);
 
   const toggleHistoryExpand = (id: string) => {
     setExpandedHistoryIds(prev =>
       prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    );
+  };
+
+  const toggleBeatExpand = (idx: number) => {
+    setExpandedBeatIndices(prev =>
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
     );
   };
 
@@ -171,28 +178,28 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const availableRefChapters = linkedBook?.chapters || [];
 
   const toggleRefChapter = (id: string) => {
-    setSelectedRefChapterIds(prev => 
+    setSelectedRefChapterIds(prev =>
       prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
     );
   };
-  
+
   // Auto-calculate start chapter when active idea changes or sync data updates
   useEffect(() => {
     if (!activeIdea) return;
-    
+
     // Only recalculate if we haven't manually set it (optional optimization, but here we sync with history)
     // Actually, we want to update it when we switch ideas.
-    
+
     let next = (activeIdea.lastSplitChapterNum || 0) + 1;
-    
+
     if (activeIdea.linkedBookId && books && books.length > 0) {
-        const linkedBook = books.find(b => b.id === activeIdea.linkedBookId);
-        if (linkedBook) {
-             const bookNext = (linkedBook.chapters?.length || 0) + 1;
-             if (bookNext > next) {
-                 next = bookNext;
-             }
+      const linkedBook = books.find(b => b.id === activeIdea.linkedBookId);
+      if (linkedBook) {
+        const bookNext = (linkedBook.chapters?.length || 0) + 1;
+        if (bookNext > next) {
+          next = bookNext;
         }
+      }
     }
     setStartChapterNum(next);
   }, [activeIdea?.id, activeIdea?.lastSplitChapterNum, activeIdea?.linkedBookId, books]);
@@ -207,8 +214,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const tempConfig = { ...defaultModel, modelName: stageModels.spark };
 
       const result = await generateStoryCoreAndSynopsis(
-        tempConfig, 
-        activeIdea.spark, 
+        tempConfig,
+        activeIdea.spark,
         {
           length: activeIdea.storyLength,
           genre: activeIdea.storyGenre,
@@ -226,8 +233,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
-        storyCore: result.core, 
+      onUpdateIdea(activeIdea.id, {
+        storyCore: result.core,
         storySynopsis: result.synopsis,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -263,7 +270,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         worldview: result,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -305,7 +312,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         characters: [...(activeIdea.characters || []), ...newCharacters],
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -326,10 +333,10 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const tempConfig = { ...defaultModel, modelName: stageModels.spark };
 
       const result = await generateStorylineFromIdea(
-        tempConfig, 
-        activeIdea.spark, 
-        activeIdea.storyCore, 
-        activeIdea.storySynopsis, 
+        tempConfig,
+        activeIdea.spark,
+        activeIdea.storyCore,
+        activeIdea.storySynopsis,
         customTemplate
       );
 
@@ -342,7 +349,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         storyline: result,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -364,7 +371,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       // UPGRADE: Use generateCompleteOutline to fuse all contexts
       const result = await generateCompleteOutline(
-        tempConfig, 
+        tempConfig,
         {
           spark: activeIdea.spark,
           core: activeIdea.storyCore,
@@ -375,7 +382,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         },
         customTemplate
       );
-      
+
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
         type: 'outline',
@@ -385,7 +392,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         outline: result,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -408,7 +415,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       const tempConfig = { ...defaultModel, modelName: stageModels.plot };
 
       const result = await generateOutlineFromWorldview(tempConfig, activeIdea.worldview, activeIdea.spark, customTemplate);
-      
+
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
         type: 'outline',
@@ -418,7 +425,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         outline: result,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -442,9 +449,9 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const existingVolumes = activeIdea.volumes || [];
       const existingTitles = new Set(existingVolumes.map(v => v.title));
-      
+
       const newVolumesData = volumesData.filter(v => !existingTitles.has(v.title));
-      
+
       if (newVolumesData.length === 0 && volumesData.length > 0) {
         alert("未发现新分卷内容（所有识别到的分卷标题已存在）。");
         setIsGenerating(false);
@@ -469,7 +476,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         volumes: finalVolumes,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -517,7 +524,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      onUpdateIdea(activeIdea.id, { 
+      onUpdateIdea(activeIdea.id, {
         volumes: updatedVolumes,
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
@@ -550,9 +557,9 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   // New: Volume-based beats splitting
   const handleSplitVolume = async () => {
     if (!activeIdea || isGenerating || !volumeContent.trim()) return;
-    
+
     let contentToProcess = volumeContent;
-    
+
     if (splitMode === 'selection') {
       const { start, end } = selectionRange;
       if (end > start) {
@@ -569,19 +576,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!modelConfig) throw new Error('没有配置模型');
 
       const customTemplate = beatsPromptId !== 'default' ? beatsPrompts.find(p => p.id === beatsPromptId)?.template : undefined;
-      
+
       // Use the user-configurable start chapter
       const startChapter = startChapterNum;
 
       // Extract Reference Context
       let referenceContext = '';
       if (linkedBook && selectedRefChapterIds.length > 0) {
-          const selectedChapters = linkedBook.chapters.filter(c => selectedRefChapterIds.includes(c.id));
-          // Sort by original order (assuming chapters array is ordered, or we could sort by index if needed)
-          // Here we just keep the order found in chapters array which is usually chronological
-          referenceContext = selectedChapters.map(c => 
-             `### ${c.title}\n(概要: ${c.summary || '无'})\n${c.content ? c.content.slice(-1000) : ''}` // Take last 1000 chars of content for context
-          ).join('\n\n');
+        const selectedChapters = linkedBook.chapters.filter(c => selectedRefChapterIds.includes(c.id));
+        // Sort by original order (assuming chapters array is ordered, or we could sort by index if needed)
+        // Here we just keep the order found in chapters array which is usually chronological
+        referenceContext = selectedChapters.map(c =>
+          `### ${c.title}\n(概要: ${c.summary || '无'})\n${c.content ? c.content.slice(-1000) : ''}` // Take last 1000 chars of content for context
+        ).join('\n\n');
       }
 
       const beats = await generateBeatsFromVolumeContent(
@@ -667,54 +674,54 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     if (!activeIdea || !activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0) return;
 
     if (!activeIdea.linkedBookId) {
-        if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
-            onConvertToBook(activeIdea);
-            // After conversion, the idea should be updated with linkedBookId, but we might need to wait or rely on user to click again.
-            // For simplicity in this flow, onConvertToBook usually switches context or updates state.
-            // But let's just alert user to try again after conversion logic handles it.
-        }
-        return;
+      if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
+        onConvertToBook(activeIdea);
+        // After conversion, the idea should be updated with linkedBookId, but we might need to wait or rely on user to click again.
+        // For simplicity in this flow, onConvertToBook usually switches context or updates state.
+        // But let's just alert user to try again after conversion logic handles it.
+      }
+      return;
     }
 
     if (!onPushChapters) {
-        alert("无法推送到作品：功能未连接");
-        return;
+      alert("无法推送到作品：功能未连接");
+      return;
     }
 
     const newChapters: Chapter[] = activeIdea.chapterBeats.map((beat, idx) => {
-        // Format scenes into content
-        let content = '';
-        if (beat.scenes && beat.scenes.length > 0) {
-            content = beat.scenes.map(scene => 
-                `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
-            ).join('\n\n');
-        } else {
-            content = beat.summary || '';
-        }
+      // Format scenes into content
+      let content = '';
+      if (beat.scenes && beat.scenes.length > 0) {
+        content = beat.scenes.map(scene =>
+          `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
+        ).join('\n\n');
+      } else {
+        content = beat.summary || '';
+      }
 
-        // Add extra metadata to summary if needed
-        const summary = beat.summary + 
-            (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') + 
-            (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+      // Add extra metadata to summary if needed
+      const summary = beat.summary +
+        (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
+        (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
 
-        return {
-            id: Date.now().toString() + '_' + idx,
-            title: beat.chapterTitle,
-            summary: summary,
-            content: content // Initial draft content from scenes
-        };
+      return {
+        id: Date.now().toString() + '_' + idx,
+        title: beat.chapterTitle,
+        summary: summary,
+        content: content // Initial draft content from scenes
+      };
     });
 
     if (window.confirm(`即将推送 ${newChapters.length} 个章节到关联作品。确定吗？`)) {
-        onPushChapters(activeIdea.linkedBookId, newChapters);
-        alert("章节已成功推送到作品目录！");
+      onPushChapters(activeIdea.linkedBookId, newChapters);
+      alert("章节已成功推送到作品目录！");
     }
   };
 
   // Helper for Prompt Selector UI
   const PromptSelector = ({ category, value, onChange }: { category: string, value: string, onChange: (id: string) => void }) => {
     const categoryPrompts = prompts.filter(p => p.category === category);
-    
+
     return (
       <div className="relative group">
         <Wand2 className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none" />
@@ -888,10 +895,10 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       核心灵感 (Spark)
                     </h3>
                     <div className="flex items-center gap-3">
-                      <PromptSelector 
-                        category="brainstorm" 
-                        value={corePromptId} 
-                        onChange={setCorePromptId} 
+                      <PromptSelector
+                        category="brainstorm"
+                        value={corePromptId}
+                        onChange={setCorePromptId}
                       />
                       <ModelSelector stage="spark" />
                       <button
@@ -979,7 +986,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       />
                       {!activeIdea.storyCore && !isGenerating && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-                           <Lightbulb className="w-12 h-12" />
+                          <Lightbulb className="w-12 h-12" />
                         </div>
                       )}
                     </div>
@@ -1040,263 +1047,263 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
             {activeStage === 'character' && (
               <div className="p-8 max-w-6xl mx-auto space-y-8">
-                 {/* Header & Controls */}
-                 <div className="flex flex-col gap-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xl font-bold text-white flex items-center">
-                          <Users className="w-6 h-6 mr-2 text-pink-400" />
-                          人物小传
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-1">设计故事的核心角色，让人物活起来</p>
+                {/* Header & Controls */}
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-white flex items-center">
+                        <Users className="w-6 h-6 mr-2 text-pink-400" />
+                        人物小传
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1">设计故事的核心角色，让人物活起来</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                    {/* Generation Settings */}
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase">主角</label>
+                        <input
+                          type="number" min="0" max="10"
+                          value={charGenReqs.protagonist}
+                          onChange={(e) => setCharGenReqs(prev => ({ ...prev, protagonist: parseInt(e.target.value) || 0 }))}
+                          className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase">反派</label>
+                        <input
+                          type="number" min="0" max="10"
+                          value={charGenReqs.antagonist}
+                          onChange={(e) => setCharGenReqs(prev => ({ ...prev, antagonist: parseInt(e.target.value) || 0 }))}
+                          className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase">配角</label>
+                        <input
+                          type="number" min="0" max="10"
+                          value={charGenReqs.supporting}
+                          onChange={(e) => setCharGenReqs(prev => ({ ...prev, supporting: parseInt(e.target.value) || 0 }))}
+                          className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        />
                       </div>
                     </div>
 
-                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
-                      {/* Generation Settings */}
-                      <div className="flex items-center gap-6">
-                         <div className="flex items-center gap-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">主角</label>
-                            <input 
-                              type="number" min="0" max="10"
-                              value={charGenReqs.protagonist}
-                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, protagonist: parseInt(e.target.value) || 0 }))}
-                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
-                            />
-                         </div>
-                         <div className="flex items-center gap-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">反派</label>
-                            <input 
-                              type="number" min="0" max="10"
-                              value={charGenReqs.antagonist}
-                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, antagonist: parseInt(e.target.value) || 0 }))}
-                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
-                            />
-                         </div>
-                         <div className="flex items-center gap-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">配角</label>
-                            <input 
-                              type="number" min="0" max="10"
-                              value={charGenReqs.supporting}
-                              onChange={(e) => setCharGenReqs(prev => ({ ...prev, supporting: parseInt(e.target.value) || 0 }))}
-                              className="w-12 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500"
-                            />
-                         </div>
+                    {/* Action Area */}
+                    <div className="flex items-center gap-3">
+                      <PromptSelector
+                        category="character"
+                        value={characterPromptId}
+                        onChange={setCharacterPromptId}
+                      />
+                      <ModelSelector stage="character" />
+                      <button
+                        onClick={handleGenerateCharacters}
+                        disabled={isGenerating || !activeIdea.spark.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                      >
+                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                        生成 (共 {charGenReqs.protagonist + charGenReqs.antagonist + charGenReqs.supporting} 人)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Character List */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {activeIdea.characters?.map((char, idx) => (
+                    <div key={char.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group relative">
+                      {/* Delete Button */}
+                      <button
+                        onClick={() => {
+                          const updated = activeIdea.characters?.filter(c => c.id !== char.id);
+                          onUpdateIdea(activeIdea.id, { characters: updated });
+                        }}
+                        className="absolute top-4 right-4 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
+                      {/* Name & Role */}
+                      <div className="mb-4">
+                        <input
+                          value={char.name}
+                          onChange={(e) => {
+                            const updated = [...(activeIdea.characters || [])];
+                            updated[idx] = { ...char, name: e.target.value };
+                            onUpdateIdea(activeIdea.id, { characters: updated });
+                          }}
+                          className="bg-transparent text-lg font-bold text-white focus:outline-none w-full mb-1"
+                          placeholder="角色姓名"
+                        />
+                        <input
+                          value={char.role}
+                          onChange={(e) => {
+                            const updated = [...(activeIdea.characters || [])];
+                            updated[idx] = { ...char, role: e.target.value };
+                            onUpdateIdea(activeIdea.id, { characters: updated });
+                          }}
+                          className="bg-transparent text-xs text-pink-400 focus:outline-none w-full"
+                          placeholder="角色定位 (主角/反派...)"
+                        />
                       </div>
 
-                      {/* Action Area */}
-                      <div className="flex items-center gap-3">
-                        <PromptSelector 
-                          category="character" 
-                          value={characterPromptId} 
-                          onChange={setCharacterPromptId} 
-                        />
-                        <ModelSelector stage="character" />
+                      {/* Basic Info */}
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">性别</label>
+                          <input
+                            value={char.gender || ''}
+                            onChange={(e) => {
+                              const updated = [...(activeIdea.characters || [])];
+                              updated[idx] = { ...char, gender: e.target.value };
+                              onUpdateIdea(activeIdea.id, { characters: updated });
+                            }}
+                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">年龄</label>
+                          <input
+                            value={char.age || ''}
+                            onChange={(e) => {
+                              const updated = [...(activeIdea.characters || [])];
+                              updated[idx] = { ...char, age: e.target.value };
+                              onUpdateIdea(activeIdea.id, { characters: updated });
+                            }}
+                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-bold text-gray-600 uppercase block mb-1">一句话介绍</label>
+                          <textarea
+                            value={char.description}
+                            onChange={(e) => {
+                              const updated = [...(activeIdea.characters || [])];
+                              updated[idx] = { ...char, description: e.target.value };
+                              onUpdateIdea(activeIdea.id, { characters: updated });
+                            }}
+                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-20"
+                          />
+                        </div>
+
                         <button
-                          onClick={handleGenerateCharacters}
-                          disabled={isGenerating || !activeIdea.spark.trim()}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                          onClick={() => setEditingCharacterId(char.id)}
+                          className="w-full py-2 flex items-center justify-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all"
                         >
-                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                          生成 (共 {charGenReqs.protagonist + charGenReqs.antagonist + charGenReqs.supporting} 人)
+                          <Maximize2 className="w-3 h-3" />
+                          编辑详细设定 (性格/外貌/背景)
                         </button>
                       </div>
                     </div>
-                  </div>
+                  ))}
 
-                  {/* Character List */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                     {activeIdea.characters?.map((char, idx) => (
-                        <div key={char.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group relative">
-                           {/* Delete Button */}
-                           <button
-                              onClick={() => {
-                                const updated = activeIdea.characters?.filter(c => c.id !== char.id);
+                  {/* Add New Character Button */}
+                  <button
+                    onClick={() => {
+                      const newChar: CharacterProfile = {
+                        id: Date.now().toString(),
+                        name: '新角色',
+                        role: '配角',
+                        description: '',
+                      };
+                      onUpdateIdea(activeIdea.id, { characters: [...(activeIdea.characters || []), newChar] });
+                    }}
+                    className="border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-600 hover:text-gray-400 hover:border-gray-700 hover:bg-gray-900/30 transition-all min-h-[300px]"
+                  >
+                    <Plus className="w-12 h-12 mb-4 opacity-20" />
+                    <span className="font-medium">手动添加角色</span>
+                  </button>
+                </div>
+
+                {/* Character Edit Modal */}
+                {editingCharacterId && (() => {
+                  const char = activeIdea.characters?.find(c => c.id === editingCharacterId);
+                  if (!char) return null;
+                  return (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
+                          <div>
+                            <h3 className="text-xl font-bold text-white">{char.name || '未命名角色'} - 详细设定</h3>
+                            <p className="text-sm text-gray-500 mt-1">{char.role} · {char.gender} · {char.age}</p>
+                          </div>
+                          <button
+                            onClick={() => setEditingCharacterId(null)}
+                            className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-gray-950/50">
+                          <div className="space-y-3">
+                            <label className="flex items-center text-sm font-bold text-indigo-400 uppercase tracking-wider">
+                              <User className="w-4 h-4 mr-2" />
+                              性格特征
+                            </label>
+                            <textarea
+                              value={char.personality || ''}
+                              onChange={(e) => {
+                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, personality: e.target.value } : c);
                                 onUpdateIdea(activeIdea.id, { characters: updated });
                               }}
-                              className="absolute top-4 right-4 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                           >
-                              <Trash2 className="w-4 h-4" />
-                           </button>
+                              className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                              placeholder="描述角色的性格、习惯、说话方式..."
+                            />
+                          </div>
 
-                           {/* Name & Role */}
-                           <div className="mb-4">
-                              <input
-                                value={char.name}
-                                onChange={(e) => {
-                                  const updated = [...(activeIdea.characters || [])];
-                                  updated[idx] = { ...char, name: e.target.value };
-                                  onUpdateIdea(activeIdea.id, { characters: updated });
-                                }}
-                                className="bg-transparent text-lg font-bold text-white focus:outline-none w-full mb-1"
-                                placeholder="角色姓名"
-                              />
-                              <input
-                                value={char.role}
-                                onChange={(e) => {
-                                  const updated = [...(activeIdea.characters || [])];
-                                  updated[idx] = { ...char, role: e.target.value };
-                                  onUpdateIdea(activeIdea.id, { characters: updated });
-                                }}
-                                className="bg-transparent text-xs text-pink-400 focus:outline-none w-full"
-                                placeholder="角色定位 (主角/反派...)"
-                              />
-                           </div>
+                          <div className="space-y-3">
+                            <label className="flex items-center text-sm font-bold text-pink-400 uppercase tracking-wider">
+                              <Maximize2 className="w-4 h-4 mr-2" />
+                              外貌描写
+                            </label>
+                            <textarea
+                              value={char.appearance || ''}
+                              onChange={(e) => {
+                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, appearance: e.target.value } : c);
+                                onUpdateIdea(activeIdea.id, { characters: updated });
+                              }}
+                              className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                              placeholder="描述角色的外貌、穿着、体态..."
+                            />
+                          </div>
 
-                           {/* Basic Info */}
-                           <div className="grid grid-cols-2 gap-4 mb-4">
-                              <div>
-                                <label className="text-xs text-gray-500 block mb-1">性别</label>
-                                <input
-                                  value={char.gender || ''}
-                                  onChange={(e) => {
-                                    const updated = [...(activeIdea.characters || [])];
-                                    updated[idx] = { ...char, gender: e.target.value };
-                                    onUpdateIdea(activeIdea.id, { characters: updated });
-                                  }}
-                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-gray-500 block mb-1">年龄</label>
-                                <input
-                                  value={char.age || ''}
-                                  onChange={(e) => {
-                                    const updated = [...(activeIdea.characters || [])];
-                                    updated[idx] = { ...char, age: e.target.value };
-                                    onUpdateIdea(activeIdea.id, { characters: updated });
-                                  }}
-                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
-                                />
-                              </div>
-                           </div>
-
-                           {/* Description */}
-                           <div className="space-y-3">
-                              <div>
-                                <label className="text-xs font-bold text-gray-600 uppercase block mb-1">一句话介绍</label>
-                                <textarea
-                                  value={char.description}
-                                  onChange={(e) => {
-                                    const updated = [...(activeIdea.characters || [])];
-                                    updated[idx] = { ...char, description: e.target.value };
-                                    onUpdateIdea(activeIdea.id, { characters: updated });
-                                  }}
-                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-20"
-                                />
-                              </div>
-                              
-                              <button
-                                onClick={() => setEditingCharacterId(char.id)}
-                                className="w-full py-2 flex items-center justify-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all"
-                              >
-                                 <Maximize2 className="w-3 h-3" />
-                                 编辑详细设定 (性格/外貌/背景)
-                              </button>
-                           </div>
+                          <div className="space-y-3">
+                            <label className="flex items-center text-sm font-bold text-green-400 uppercase tracking-wider">
+                              <History className="w-4 h-4 mr-2" />
+                              背景故事
+                            </label>
+                            <textarea
+                              value={char.background || ''}
+                              onChange={(e) => {
+                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, background: e.target.value } : c);
+                                onUpdateIdea(activeIdea.id, { characters: updated });
+                              }}
+                              className="w-full h-64 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                              placeholder="描述角色的过去、经历、秘密..."
+                            />
+                          </div>
                         </div>
-                     ))}
-                     
-                     {/* Add New Character Button */}
-                     <button
-                        onClick={() => {
-                           const newChar: CharacterProfile = {
-                              id: Date.now().toString(),
-                              name: '新角色',
-                              role: '配角',
-                              description: '',
-                           };
-                           onUpdateIdea(activeIdea.id, { characters: [...(activeIdea.characters || []), newChar] });
-                        }}
-                        className="border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-600 hover:text-gray-400 hover:border-gray-700 hover:bg-gray-900/30 transition-all min-h-[300px]"
-                     >
-                        <Plus className="w-12 h-12 mb-4 opacity-20" />
-                        <span className="font-medium">手动添加角色</span>
-                     </button>
-                  </div>
 
-                  {/* Character Edit Modal */}
-                  {editingCharacterId && (() => {
-                    const char = activeIdea.characters?.find(c => c.id === editingCharacterId);
-                    if (!char) return null;
-                    return (
-                      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
-                        <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                           <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
-                              <div>
-                                <h3 className="text-xl font-bold text-white">{char.name || '未命名角色'} - 详细设定</h3>
-                                <p className="text-sm text-gray-500 mt-1">{char.role} · {char.gender} · {char.age}</p>
-                              </div>
-                              <button 
-                                onClick={() => setEditingCharacterId(null)}
-                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
-                              >
-                                <X className="w-5 h-5" />
-                              </button>
-                           </div>
-                           
-                           <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-gray-950/50">
-                              <div className="space-y-3">
-                                <label className="flex items-center text-sm font-bold text-indigo-400 uppercase tracking-wider">
-                                  <User className="w-4 h-4 mr-2" />
-                                  性格特征
-                                </label>
-                                <textarea
-                                   value={char.personality || ''}
-                                   onChange={(e) => {
-                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, personality: e.target.value } : c);
-                                      onUpdateIdea(activeIdea.id, { characters: updated });
-                                   }}
-                                   className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                                   placeholder="描述角色的性格、习惯、说话方式..."
-                                />
-                              </div>
-
-                              <div className="space-y-3">
-                                <label className="flex items-center text-sm font-bold text-pink-400 uppercase tracking-wider">
-                                  <Maximize2 className="w-4 h-4 mr-2" />
-                                  外貌描写
-                                </label>
-                                <textarea
-                                   value={char.appearance || ''}
-                                   onChange={(e) => {
-                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, appearance: e.target.value } : c);
-                                      onUpdateIdea(activeIdea.id, { characters: updated });
-                                   }}
-                                   className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                                   placeholder="描述角色的外貌、穿着、体态..."
-                                />
-                              </div>
-
-                              <div className="space-y-3">
-                                <label className="flex items-center text-sm font-bold text-green-400 uppercase tracking-wider">
-                                  <History className="w-4 h-4 mr-2" />
-                                  背景故事
-                                </label>
-                                <textarea
-                                   value={char.background || ''}
-                                   onChange={(e) => {
-                                      const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, background: e.target.value } : c);
-                                      onUpdateIdea(activeIdea.id, { characters: updated });
-                                   }}
-                                   className="w-full h-64 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                                   placeholder="描述角色的过去、经历、秘密..."
-                                />
-                              </div>
-                           </div>
-                           
-                           <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
-                              <button
-                                onClick={() => setEditingCharacterId(null)}
-                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
-                              >
-                                完成编辑
-                              </button>
-                           </div>
+                        <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
+                          <button
+                            onClick={() => setEditingCharacterId(null)}
+                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                          >
+                            完成编辑
+                          </button>
                         </div>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1468,7 +1475,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   {/* Left: Input/Config Area */}
                   <div className="xl:col-span-1 space-y-6">
                     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
-                      
+
                       {/* Split Mode Selector */}
                       <div className="space-y-3">
                         <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
@@ -1477,28 +1484,28 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                             拆解范围
                           </div>
                           {splitMode === 'selection' && (
-                             <span className="text-xs text-indigo-400">
-                               已选中 {selectionRange.end - selectionRange.start} 字
-                             </span>
+                            <span className="text-xs text-indigo-400">
+                              已选中 {selectionRange.end - selectionRange.start} 字
+                            </span>
                           )}
                         </label>
                         <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
-                           <button
-                             onClick={() => setSplitMode('full')}
-                             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'full' 
-                               ? 'bg-gray-800 text-white shadow-sm' 
-                               : 'text-gray-500 hover:text-gray-300'}`}
-                           >
-                             全部内容
-                           </button>
-                           <button
-                             onClick={() => setSplitMode('selection')}
-                             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'selection' 
-                               ? 'bg-gray-800 text-white shadow-sm' 
-                               : 'text-gray-500 hover:text-gray-300'}`}
-                           >
-                             选中片段
-                           </button>
+                          <button
+                            onClick={() => setSplitMode('full')}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'full'
+                              ? 'bg-gray-800 text-white shadow-sm'
+                              : 'text-gray-500 hover:text-gray-300'}`}
+                          >
+                            全部内容
+                          </button>
+                          <button
+                            onClick={() => setSplitMode('selection')}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'selection'
+                              ? 'bg-gray-800 text-white shadow-sm'
+                              : 'text-gray-500 hover:text-gray-300'}`}
+                          >
+                            选中片段
+                          </button>
                         </div>
                       </div>
 
@@ -1509,93 +1516,90 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           value={volumeContent}
                           onChange={(e) => setVolumeContent(e.target.value)}
                           placeholder="此处会自动填充从分卷推送的内容，您也可以手动粘贴一段剧情。选中部分文字可进行局部拆分。"
-                          className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${
-                            splitMode === 'selection' && selectionRange.end > selectionRange.start 
-                              ? 'border-indigo-500/50' 
+                          className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${splitMode === 'selection' && selectionRange.end > selectionRange.start
+                              ? 'border-indigo-500/50'
                               : 'border-gray-800 focus:border-indigo-500/30'
-                          }`}
+                            }`}
                         />
                         {splitMode === 'selection' && selectionRange.end === selectionRange.start && (
                           <div className="text-xs text-yellow-500 flex items-center">
-                             <span className="mr-1">⚠️</span> 请在上方输入框中用鼠标选中需要拆分的文字
+                            <span className="mr-1">⚠️</span> 请在上方输入框中用鼠标选中需要拆分的文字
                           </div>
                         )}
                       </div>
 
                       {/* Reference Chapter Selector (New) */}
                       {linkedBook && availableRefChapters.length > 0 && (
-                          <div className="space-y-3 pt-3 border-t border-gray-800">
-                             <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
-                                <div className="flex items-center">
-                                   <LinkIcon className="w-4 h-4 mr-2 text-indigo-400" />
-                                   参考书籍章节
-                                </div>
-                                <span className="text-xs text-gray-500">
-                                   已选 {selectedRefChapterIds.length} 章
-                                </span>
-                             </label>
-                             
-                             <div className="space-y-2">
-                                <button
-                                   onClick={() => setShowRefChapterSelector(!showRefChapterSelector)}
-                                   className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400 text-left flex items-center justify-between hover:border-gray-700 transition-colors"
-                                >
-                                   <span>
-                                     {selectedRefChapterIds.length > 0 
-                                       ? `参考: ${availableRefChapters.find(c => c.id === selectedRefChapterIds[0])?.title.substring(0, 15)}... 等` 
-                                       : '点击选择参考章节 (可选)'}
-                                   </span>
-                                   {showRefChapterSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                </button>
+                        <div className="space-y-3 pt-3 border-t border-gray-800">
+                          <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
+                            <div className="flex items-center">
+                              <LinkIcon className="w-4 h-4 mr-2 text-indigo-400" />
+                              参考书籍章节
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              已选 {selectedRefChapterIds.length} 章
+                            </span>
+                          </label>
 
-                                {showRefChapterSelector && (
-                                   <div className="bg-gray-950 border border-gray-800 rounded-lg max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                                      {availableRefChapters.slice().reverse().map(chapter => (
-                                         <div 
-                                            key={chapter.id} 
-                                            onClick={() => toggleRefChapter(chapter.id)}
-                                            className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${
-                                               selectedRefChapterIds.includes(chapter.id) 
-                                                 ? 'bg-indigo-900/30 text-indigo-300' 
-                                                 : 'hover:bg-gray-800 text-gray-400'
-                                            }`}
-                                         >
-                                            <div className={`w-3 h-3 rounded border flex items-center justify-center ${
-                                               selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
-                                            }`}>
-                                               {selectedRefChapterIds.includes(chapter.id) && <Check className="w-2 h-2 text-white" />}
-                                            </div>
-                                            <span className="truncate">{chapter.title}</span>
-                                         </div>
-                                      ))}
-                                   </div>
-                                )}
-                             </div>
+                          <div className="space-y-2">
+                            <button
+                              onClick={() => setShowRefChapterSelector(!showRefChapterSelector)}
+                              className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400 text-left flex items-center justify-between hover:border-gray-700 transition-colors"
+                            >
+                              <span>
+                                {selectedRefChapterIds.length > 0
+                                  ? `参考: ${availableRefChapters.find(c => c.id === selectedRefChapterIds[0])?.title.substring(0, 15)}... 等`
+                                  : '点击选择参考章节 (可选)'}
+                              </span>
+                              {showRefChapterSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+
+                            {showRefChapterSelector && (
+                              <div className="bg-gray-950 border border-gray-800 rounded-lg max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                {availableRefChapters.slice().reverse().map(chapter => (
+                                  <div
+                                    key={chapter.id}
+                                    onClick={() => toggleRefChapter(chapter.id)}
+                                    className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${selectedRefChapterIds.includes(chapter.id)
+                                        ? 'bg-indigo-900/30 text-indigo-300'
+                                        : 'hover:bg-gray-800 text-gray-400'
+                                      }`}
+                                  >
+                                    <div className={`w-3 h-3 rounded border flex items-center justify-center ${selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
+                                      }`}>
+                                      {selectedRefChapterIds.includes(chapter.id) && <Check className="w-2 h-2 text-white" />}
+                                    </div>
+                                    <span className="truncate">{chapter.title}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
+                        </div>
                       )}
 
                       <div className="space-y-4">
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-gray-300">起始章节号</label>
-                            <input
-                                type="number"
-                                value={startChapterNum}
-                                onChange={(e) => setStartChapterNum(Math.max(1, parseInt(e.target.value) || 1))}
-                                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
-                                min="1"
-                            />
+                          <label className="text-sm font-medium text-gray-300">起始章节号</label>
+                          <input
+                            type="number"
+                            value={startChapterNum}
+                            onChange={(e) => setStartChapterNum(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                            min="1"
+                          />
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-sm font-medium text-gray-300">预计拆分章数</label>
-                            <input
-                                type="number"
-                                value={splitChapterCount}
-                                onChange={(e) => setSplitChapterCount(Math.max(1, parseInt(e.target.value) || 1))}
-                                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
-                                min="1"
-                                max="50"
-                            />
+                          <label className="text-sm font-medium text-gray-300">预计拆分章数</label>
+                          <input
+                            type="number"
+                            value={splitChapterCount}
+                            onChange={(e) => setSplitChapterCount(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                            min="1"
+                            max="50"
+                          />
                         </div>
                       </div>
 
@@ -1685,23 +1689,39 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                             {/* Scene Breakdown */}
                             {beat.scenes && beat.scenes.length > 0 && (
-                                <div className="mt-6 border-t border-gray-800 pt-4">
-                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center">
-                                      <List className="w-3 h-3 mr-1.5" />
-                                      场景细化
-                                    </h4>
-                                    <div className="space-y-3">
-                                        {beat.scenes.map((scene, sIdx) => (
-                                            <div key={sIdx} className="bg-gray-950/30 border border-gray-800/50 rounded-lg p-3 text-sm hover:border-indigo-500/30 transition-colors">
-                                                <div className="flex justify-between items-start mb-1.5">
-                                                    <span className="font-bold text-gray-300">{scene.sceneTitle}</span>
-                                                    <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono">{scene.wordCount}</span>
-                                                </div>
-                                                <p className="text-gray-400 text-xs leading-relaxed">{scene.detail}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                              <div className="mt-6 border-t border-gray-800 pt-4">
+                                <button
+                                  onClick={() => toggleBeatExpand(idx)}
+                                  className="w-full h-4 text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-between hover:text-gray-300 transition-colors group"
+                                >
+                                  <div className="flex items-center">
+                                    <List className="w-3 h-3 mr-1.5" />
+                                    场景细化
+                                    <span className="ml-2 text-[10px] lowercase font-normal opacity-50 group-hover:opacity-100 italic">
+                                      ({beat.scenes.length} 个场景)
+                                    </span>
+                                  </div>
+                                  {expandedBeatIndices.includes(idx) ? (
+                                    <ChevronUp className="w-3 h-3" />
+                                  ) : (
+                                    <ChevronDown className="w-3 h-3" />
+                                  )}
+                                </button>
+
+                                {expandedBeatIndices.includes(idx) && (
+                                  <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    {beat.scenes.map((scene, sIdx) => (
+                                      <div key={sIdx} className="bg-gray-950/30 border border-gray-800/50 rounded-lg p-3 text-sm hover:border-indigo-500/30 transition-colors">
+                                        <div className="flex justify-between items-start mb-1.5">
+                                          <span className="font-bold text-gray-300">{scene.sceneTitle}</span>
+                                          <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono">{scene.wordCount}</span>
+                                        </div>
+                                        <p className="text-gray-400 text-xs leading-relaxed">{scene.detail}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         ))}
