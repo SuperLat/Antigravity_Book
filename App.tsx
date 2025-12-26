@@ -22,7 +22,354 @@ import { Library, Lightbulb, Settings, Terminal, Minimize2, Loader2, User, Histo
 // --- MOCK DATA ---
 const INITIAL_BOOKS: Book[] = [];
 
-// Default Prompts
+// Built-in Default Prompts - These are the default templates used by AI generation functions
+const BUILTIN_PROMPTS: PromptTemplate[] = [
+  // === 脑洞/灵感 (Brainstorm) ===
+  {
+    id: 'builtin_story_core',
+    name: '故事内核与概要生成',
+    description: '从核心灵感生成故事内核和概要',
+    category: 'brainstorm',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `【核心脑洞/灵感】：{{spark}}
+{{options}}
+
+请基于以上信息，提炼出故事内核（Story Core）并撰写一个故事概要（Story Synopsis）。
+
+要求：
+1. 故事内核：用一句话或简短的几句话描述故事最深层的哲学内涵、情感核心或最本质的冲突。
+2. 故事概要：约 300-500 字，包含背景设定、主角动机、核心危机以及大致的发展方向。
+
+请严格以 JSON 格式返回，不要包含任何 markdown 代码块标记，格式如下：
+{
+  "core": "故事内核内容...",
+  "synopsis": "故事概要内容..."
+}`
+  },
+  {
+    id: 'builtin_storyline',
+    name: '故事线梳理',
+    description: '将灵感转化为清晰的故事线',
+    category: 'brainstorm',
+    isBuiltIn: true,
+    template: `【原始灵感】：{{spark}}
+{{core}}
+{{synopsis}}
+
+请基于以上信息，梳理出一条清晰、完整的故事线（Storyline）。
+
+要求：
+1. 明确故事的主角及其核心目标。
+2. 概括故事的起因、经过和结果（Start, Middle, End）。
+3. 包含关键的转折点和高潮事件。
+4. 既然是故事线，请注重逻辑连贯性，字数控制在 500-800 字左右。
+
+请直接输出故事线内容。`
+  },
+
+  // === 世界观构建 (World) ===
+  {
+    id: 'builtin_worldview',
+    name: '世界观草案',
+    description: '基于灵感构建世界观设定',
+    category: 'world',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `核心梗/脑洞：【{{input}}】
+
+请基于上述核心梗，设计一个精炼的世界观草案。
+
+要求包含以下内容（请保持简明扼要）：
+1. 力量体系名称及等级划分。
+2. 社会结构与核心阶层矛盾。
+3. 核心能源或驱动力是什么。
+4. 独特的地理环境或城市风貌。
+
+请使用结构清晰的 Markdown 格式输出。`
+  },
+  {
+    id: 'builtin_detailed_worldview',
+    name: '详细世界观构建',
+    description: '基于故事设定生成详细世界观',
+    category: 'world',
+    isBuiltIn: true,
+    template: `基于以下故事信息，设计一个精炼且逻辑自洽的世界观背景。
+
+【故事篇幅】：{{storyLength}}
+【故事内核】：{{core}}
+【故事概要】：{{synopsis}}
+【初步设定】：类型：{{genre}}，基础背景：{{background}}
+
+要求包含以下内容（请保持简明扼要，避免冗长）：
+1. 世界背景：简述故事发生的空间设定。
+2. 力量/技术体系：概括核心逻辑（如修仙等级、科技水平、魔法法则等）。
+3. 核心冲突源：点出导致故事发生的深层诱因。
+
+请使用结构清晰的 Markdown 格式输出，重点在于核心设定的构建，非核心细节可适当留白。`
+  },
+
+  // === 大纲生成 (Outline) ===
+  {
+    id: 'builtin_outline_from_worldview',
+    name: '三幕式大纲',
+    description: '基于世界观生成小说大纲',
+    category: 'outline',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `【核心梗】：{{spark}}
+【世界观设定】：{{worldview}}
+
+请基于以上信息，设计一个标准的三幕式小说大纲。
+要求：
+1. 主角背景设定（底层贫民/意外卷入者等）。
+2. 每一幕（第一卷、第二卷、第三卷）的核心冲突和高潮点。
+3. 结局的初步构想。
+
+请用 Markdown 格式输出。`
+  },
+  {
+    id: 'builtin_complete_outline',
+    name: '完整分卷大纲',
+    description: '综合所有素材生成详尽的全书大纲',
+    category: 'outline',
+    isBuiltIn: true,
+    template: `{{context}}
+
+--- 任务指令 ---
+请综合以上素材，创作一份详尽的**全书大纲**。
+
+**输出格式要求（必须严格遵守）**：
+
+# 全书大纲
+
+## 一、故事主线
+（在此处用精炼的语言概括贯穿全书的核心剧情线索，约300-500字。）
+
+## 二、分卷细纲
+
+### 第一卷：[卷名]
+**主要内容**：
+（详细描述本卷的主线剧情发展，核心冲突与高潮。）
+**支线内容**：
+（描述本卷并行的支线剧情，如配角成长、感情线、隐藏伏笔等。）
+
+### 第二卷：[卷名]
+**主要内容**：...
+**支线内容**：...
+
+（后续分卷以此类推...）
+
+**内容要求**：
+1. **深度融合**：剧情必须体现【角色】的性格特征和【世界观】的独特规则。
+2. **结构严谨**：采用分卷结构，确保每一卷都有明确的起承转合。
+3. **主次分明**：主要内容要紧扣核心冲突，支线内容要丰富世界观和人物关系。
+
+请以 Markdown 格式输出。`
+  },
+  {
+    id: 'builtin_parts_from_volume',
+    name: '分卷细化为分部',
+    description: '将卷大纲拆分为分部',
+    category: 'outline',
+    isBuiltIn: true,
+    template: `作为一名资深网文策划，请根据以下卷大纲，将其拆分为 2-4 个"分部"（Part）。
+每个分部应该是该卷内的一个阶段性剧情单元，有明确的起承转合。
+
+卷标题：{{volumeTitle}}
+卷大纲：
+{{volumeSummary}}
+
+请以 JSON 数组格式返回，格式如下：
+[
+  {
+    "title": "第一部：分部名",
+    "summary": "本分部的详细剧情摘要..."
+  },
+  ...
+]
+只返回 JSON 数据，不要包含 markdown 标记或其他文本。`
+  },
+
+  // === 细纲编排 (Chapter Beats) ===
+  {
+    id: 'builtin_chapter_beats',
+    name: '章节细纲拆解',
+    description: '将大纲拆解为章节细纲',
+    category: 'beats',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `【小说大纲】：{{outline}}
+
+请基于大纲的第一部分（第一卷），拆分为 5-8 个具体的章节细纲。
+
+请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
+[
+  {
+    "chapterTitle": "第一章：具体标题",
+    "summary": "第一章的具体事件摘要...",
+    "keyCharacters": ["主角名", "配角名"],
+    "conflict": "核心冲突点"
+  },
+  ...
+]`
+  },
+  {
+    id: 'builtin_beats_from_volume',
+    name: '分卷内容细纲拆解',
+    description: '将分卷内容拆分为带场景的章节细纲',
+    category: 'beats',
+    isBuiltIn: true,
+    template: `【核心灵感】：{{spark}}
+【故事内核】：{{core}}
+【故事概要】：{{synopsis}}
+【世界观设定】：{{worldview}}
+【核心角色】：{{characters}}
+{{reference}}
+
+【待拆解的分卷/剧情内容】：
+{{volumeContent}}
+
+--- 任务指令 ---
+请结合上述【世界观】、【角色】、【前文剧情】和【故事背景】，将【待拆解的分卷内容】拆分为 {{chapterCount}} 个连续的章节细纲。
+章节编号从第 {{startChapter}} 章开始。
+
+要求：
+1. **承接上文**：如果提供了【前文剧情/参考章节】，请确保生成的章节与其无缝衔接，保持情节和人物状态的连贯性。
+2. **章节细化**：每个章节必须拆分为 5-6 个具体的对话场景。
+3. **场景描述**：简述每个场景中对话要交代的关键线索或冲突点。
+4. **字数规划**：为每个场景规划字数分配，确保全章总字数在 2500 字左右。
+5. **核心冲突**：明确标出每一章的核心冲突和出场关键角色。
+6. **严禁合并**：必须严格按照要求的章节数进行拆解。`
+  },
+
+  // === 角色设计 (Character) ===
+  {
+    id: 'builtin_character_design',
+    name: '角色人物设计',
+    description: '基于故事设定生成角色人物小传',
+    category: 'character',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `【灵感/脑洞】：{{spark}}
+【故事内核】：{{core}}
+【故事概要】：{{synopsis}}
+【世界观设定】：{{worldview}}
+
+请基于以上故事设定，设计核心角色。
+
+要求：
+1. 角色性格要鲜明，有独特的辨识度。
+2. 角色背景要与世界观深度结合。
+3. 角色之间要有充满张力的关系。
+4. 请精简输出，【背景故事】和【性格描述】请严格控制在 100 字以内，避免过长导致内容截断。
+
+请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
+[
+  {
+    "name": "角色名",
+    "role": "主角/反派/重要配角",
+    "gender": "男/女/其他",
+    "age": "年龄或视觉年龄",
+    "description": "简短的一句话介绍",
+    "personality": "详细的性格描述(100字内)...",
+    "appearance": "详细的外貌描写...",
+    "background": "详细的角色背景故事(100字内)..."
+  },
+  ...
+]`
+  },
+
+  // === 正文写作 (Drafting) ===
+  {
+    id: 'builtin_chapter_draft',
+    name: '章节续写',
+    description: '基于设定和上下文续写章节正文',
+    category: 'drafting',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `请根据当前章节的上下文和关联的设定，继续撰写后续剧情。
+
+要求：
+1. 保持现有文本的风格和语气。
+2. 情节发展要自然连贯。
+3. 人物言行要符合其性格设定。
+4. 适当运用细节描写增强画面感。
+
+{{input}}`
+  },
+  {
+    id: 'builtin_expand_scene',
+    name: '场景扩写',
+    description: '扩展当前场景的细节描写',
+    category: 'drafting',
+    isBuiltIn: true,
+    template: `请对当前场景进行扩写，增加更多生动的细节。
+
+要求：
+1. 增加环境描写，营造氛围。
+2. 丰富角色的动作、神态和心理描写。
+3. 适当增加对话，推动剧情发展。
+4. 保持原有的叙事节奏。
+
+{{input}}`
+  },
+
+  // === 润色优化 (Refining) ===
+  {
+    id: 'builtin_polish',
+    name: '文本润色',
+    description: '优化文本表达，提升文学性',
+    category: 'refining',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `请对以下文本进行润色优化：
+
+{{input}}
+
+要求：
+1. 优化句式结构，使表达更流畅。
+2. 丰富词汇运用，避免重复用词。
+3. 增强文学性和画面感。
+4. 保持原意不变，语气风格一致。`
+  },
+  {
+    id: 'builtin_chapter_summary',
+    name: '章节概要生成',
+    description: '为章节内容生成精炼概要',
+    category: 'refining',
+    isBuiltIn: true,
+    template: `请为以下章节内容生成一个简洁的概要（100-200字）：
+
+【章节内容】
+{{content}}
+
+要求：
+1. 概括本章的核心事件和情节发展
+2. 提及关键角色和他们的行动
+3. 突出本章的冲突或转折点
+4. 简明扼要，便于后续章节参考
+
+请直接输出概要内容，不要包含其他说明。`
+  },
+
+  // === 通用指令 (General) ===
+  {
+    id: 'builtin_general',
+    name: '通用创作助手',
+    description: '通用的小说创作辅助指令',
+    category: 'general',
+    isBuiltIn: true,
+    isDefault: true,
+    template: `作为专业的小说创作助手，请根据用户的需求提供帮助。
+
+用户需求：{{input}}
+
+请基于提供的上下文和设定，给出专业、详细的回应。`
+  }
+];
+
+// Legacy empty array for compatibility
 const DEFAULT_PROMPTS: PromptTemplate[] = [];
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -179,16 +526,45 @@ const App: React.FC = () => {
 
         setBooks(Array.isArray(booksData) ? booksData : []);
         setIdeas(Array.isArray(ideasData) ? ideasData : []);
-        // Filter out built-in prompts to enforce "delete built-in prompts" policy
-        const loadedPrompts = Array.isArray(promptsData) ? promptsData : [];
-        setPrompts(loadedPrompts.filter(p => !p.isBuiltIn));
+
+        // Merge built-in prompts with user prompts
+        // User's modified versions of built-in prompts override the defaults
+        const userPrompts = Array.isArray(promptsData) ? promptsData : [];
+        const userPromptIds = new Set(userPrompts.map(p => p.id));
+
+        // Start with built-in prompts that haven't been overridden by user
+        const mergedPrompts: PromptTemplate[] = BUILTIN_PROMPTS.map(builtIn => {
+          // Check if user has a modified version of this built-in prompt
+          const userVersion = userPrompts.find(p => p.id === builtIn.id);
+          if (userVersion) {
+            // Use user's version but ensure isBuiltIn flag is preserved
+            return { ...userVersion, isBuiltIn: true };
+          }
+          return builtIn;
+        });
+
+        // Add user's custom (non-built-in) prompts
+        const customPrompts = userPrompts.filter(p => !p.id.startsWith('builtin_'));
+        mergedPrompts.push(...customPrompts);
+
+        setPrompts(mergedPrompts);
         setSettings(settingsData ? migrateSettings(settingsData) : DEFAULT_SETTINGS);
       } catch (error) {
         console.error('Failed to load data:', error);
-        // Fallback to LocalStorage
+        // Fallback to LocalStorage + built-in prompts
         setBooks(loadFromStorage('novelcraft_books', INITIAL_BOOKS) || []);
         setIdeas(loadFromStorage('novelcraft_ideas', []) || []);
-        setPrompts(loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS) || []);
+
+        // Even on error, include built-in prompts
+        const storedPrompts = loadFromStorage('novelcraft_prompts', DEFAULT_PROMPTS) || [];
+        const mergedPrompts = [...BUILTIN_PROMPTS];
+        storedPrompts.forEach(p => {
+          if (!p.id.startsWith('builtin_')) {
+            mergedPrompts.push(p);
+          }
+        });
+        setPrompts(mergedPrompts);
+
         const loaded = loadFromStorage('novelcraft_settings', DEFAULT_SETTINGS);
         setSettings(migrateSettings(loaded));
       } finally {
@@ -490,12 +866,30 @@ const App: React.FC = () => {
       cover: 'from-yellow-600 to-orange-600',
       entities: newEntities,
       chapters: idea.chapterBeats && idea.chapterBeats.length > 0
-        ? idea.chapterBeats.map((beat, idx) => ({
-          id: Date.now().toString() + `_c${idx}`,
-          title: beat.chapterTitle,
-          summary: beat.summary,
-          content: `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters ? beat.keyCharacters.join(', ') : ''}\n\n(在此开始写作...)`
-        }))
+        ? idea.chapterBeats.map((beat, idx) => {
+          // Format scenes into content (consistent with handlePushBeatsToBook)
+          let chapterContent = '';
+          if (beat.scenes && beat.scenes.length > 0) {
+            chapterContent = beat.scenes.map(scene =>
+              `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
+            ).join('\n\n');
+          } else {
+            // Fallback to summary-based content if no scenes
+            chapterContent = `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters ? beat.keyCharacters.join(', ') : ''}\n\n(在此开始写作...)`;
+          }
+
+          // Add extra metadata to summary
+          const chapterSummary = beat.summary +
+            (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
+            (beat.keyCharacters && beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+
+          return {
+            id: Date.now().toString() + `_c${idx}`,
+            title: beat.chapterTitle,
+            summary: chapterSummary,
+            content: chapterContent
+          };
+        })
         : [{ id: Date.now() + '_c', title: '第一章', content: '' }]
     };
 
@@ -667,29 +1061,76 @@ const App: React.FC = () => {
     const targetBook = books.find(b => b.id === bookId);
     if (!targetBook) return;
 
-    // Check for duplicates
-    const existingTitles = new Set(targetBook.chapters.map(c => c.title));
-    const duplicates = chapters.filter(c => existingTitles.has(c.title));
+    // Build a map of existing chapter numbers to their indices
+    const existingChapterMap = new Map<number, { index: number; title: string }>();
+    targetBook.chapters.forEach((c, idx) => {
+      const num = parseChapterNumber(c.title);
+      if (num > 0) {
+        existingChapterMap.set(num, { index: idx, title: c.title });
+      }
+    });
+
+    // Check for duplicates by chapter number
+    const duplicates: { newTitle: string; existingTitle: string; chapterNum: number }[] = [];
+    chapters.forEach(c => {
+      const num = parseChapterNumber(c.title);
+      if (num > 0 && existingChapterMap.has(num)) {
+        duplicates.push({
+          newTitle: c.title,
+          existingTitle: existingChapterMap.get(num)!.title,
+          chapterNum: num
+        });
+      }
+    });
 
     if (duplicates.length > 0) {
-      if (!window.confirm(`检测到 ${duplicates.length} 个同名章节（如 "${duplicates[0].title}"），是否覆盖？`)) {
+      // Build detailed message showing which chapters will be overwritten
+      const duplicateNums = duplicates.map(d => d.chapterNum).sort((a, b) => a - b);
+      const displayNums = duplicateNums.length <= 5
+        ? duplicateNums.join('、')
+        : `${duplicateNums.slice(0, 5).join('、')}...等`;
+
+      if (!window.confirm(
+        `检测到 ${duplicates.length} 个章节编号已存在（第 ${displayNums} 章），推送将覆盖现有内容。\n\n是否继续？`
+      )) {
         return;
       }
     }
 
     const newChapters = [...targetBook.chapters];
+    let overwriteCount = 0;
+    let addCount = 0;
+
     chapters.forEach(newChap => {
-      const idx = newChapters.findIndex(c => c.title === newChap.title);
-      if (idx >= 0) {
-        // Keep ID if overwriting to preserve selection state if applicable
-        newChapters[idx] = { ...newChap, id: newChapters[idx].id };
+      const newChapNum = parseChapterNumber(newChap.title);
+
+      // First try to match by chapter number
+      if (newChapNum > 0 && existingChapterMap.has(newChapNum)) {
+        const existing = existingChapterMap.get(newChapNum)!;
+        // Overwrite: keep original ID to preserve selection state
+        newChapters[existing.index] = { ...newChap, id: newChapters[existing.index].id };
+        overwriteCount++;
       } else {
-        newChapters.push(newChap);
+        // Fallback: check exact title match
+        const titleMatchIdx = newChapters.findIndex(c => c.title === newChap.title);
+        if (titleMatchIdx >= 0) {
+          newChapters[titleMatchIdx] = { ...newChap, id: newChapters[titleMatchIdx].id };
+          overwriteCount++;
+        } else {
+          // New chapter
+          newChapters.push(newChap);
+          addCount++;
+        }
       }
     });
 
     handleUpdateBook({ ...targetBook, chapters: newChapters });
-    alert(`成功推送 ${chapters.length} 个章节到《${targetBook.title}》`);
+
+    // Build result message
+    let resultMsg = `成功推送到《${targetBook.title}》：`;
+    if (addCount > 0) resultMsg += `新增 ${addCount} 章`;
+    if (overwriteCount > 0) resultMsg += `${addCount > 0 ? '，' : ''}覆盖 ${overwriteCount} 章`;
+    alert(resultMsg);
   };
 
   const handleSaveSummary = (summary: string) => {

@@ -565,7 +565,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (end > start) {
         contentToProcess = volumeContent.substring(start, end);
       } else {
-        alert("请先在输入框中选中需要拆分的文字片段，或切换为“全部内容”模式。");
+        alert(`请先在输入框中选中需要拆分的文字片段，或切换为"全部内容"模式。`);
         return;
       }
     }
@@ -607,6 +607,23 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         customTemplate
       );
 
+      // Archive current beats to history if they exist (before replacing with new ones)
+      let updatedHistory = [...(activeIdea.beatsSplitHistory || [])];
+      if (activeIdea.chapterBeats && activeIdea.chapterBeats.length > 0) {
+        // Create an archive entry from current beats
+        const archivedSplit: BeatsSplit = {
+          id: 'archived_' + Date.now().toString(),
+          volumeContent: '（已归档的细纲，原始内容已推送或被新拆解替换）',
+          chapterCount: activeIdea.chapterBeats.length,
+          startChapter: activeIdea.lastSplitChapterNum
+            ? activeIdea.lastSplitChapterNum - activeIdea.chapterBeats.length + 1
+            : 1,
+          beats: activeIdea.chapterBeats,
+          createdAt: Date.now()
+        };
+        updatedHistory.push(archivedSplit);
+      }
+
       const newSplit: BeatsSplit = {
         id: Date.now().toString(),
         volumeContent: contentToProcess, // Save only the processed part to history
@@ -616,7 +633,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      const updatedHistory = [...(activeIdea.beatsSplitHistory || []), newSplit];
+      // Add the new split to history as well for reference
+      updatedHistory.push(newSplit);
       const lastChapterNum = startChapter + beats.length - 1;
 
       const historyEntry: GenerationHistoryEntry = {
@@ -628,11 +646,11 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      // Update idea with new split history and cumulative beats
+      // Update idea: replace current beats with new ones (not cumulative anymore)
       onUpdateIdea(activeIdea.id, {
         beatsSplitHistory: updatedHistory,
         lastSplitChapterNum: lastChapterNum,
-        chapterBeats: [...(activeIdea.chapterBeats || []), ...beats],
+        chapterBeats: beats, // Replace instead of append
         generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
       });
 
@@ -715,6 +733,52 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     if (window.confirm(`即将推送 ${newChapters.length} 个章节到关联作品。确定吗？`)) {
       onPushChapters(activeIdea.linkedBookId, newChapters);
       alert("章节已成功推送到作品目录！");
+    }
+  };
+
+  // Push a single chapter beat to the linked book
+  const handlePushSingleBeatToBook = (beatIndex: number) => {
+    if (!activeIdea || !activeIdea.chapterBeats || beatIndex >= activeIdea.chapterBeats.length) return;
+
+    if (!activeIdea.linkedBookId) {
+      if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
+        onConvertToBook(activeIdea);
+      }
+      return;
+    }
+
+    if (!onPushChapters) {
+      alert("无法推送到作品：功能未连接");
+      return;
+    }
+
+    const beat = activeIdea.chapterBeats[beatIndex];
+
+    // Format scenes into content
+    let content = '';
+    if (beat.scenes && beat.scenes.length > 0) {
+      content = beat.scenes.map(scene =>
+        `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
+      ).join('\n\n');
+    } else {
+      content = beat.summary || '';
+    }
+
+    // Add extra metadata to summary
+    const summary = beat.summary +
+      (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
+      (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+
+    const newChapter: Chapter = {
+      id: Date.now().toString(),
+      title: beat.chapterTitle,
+      summary: summary,
+      content: content
+    };
+
+    if (window.confirm(`即将推送「${beat.chapterTitle}」到关联作品。确定吗？`)) {
+      onPushChapters(activeIdea.linkedBookId, [newChapter]);
+      alert(`「${beat.chapterTitle}」已成功推送到作品目录！`);
     }
   };
 
@@ -1517,8 +1581,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           onChange={(e) => setVolumeContent(e.target.value)}
                           placeholder="此处会自动填充从分卷推送的内容，您也可以手动粘贴一段剧情。选中部分文字可进行局部拆分。"
                           className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${splitMode === 'selection' && selectionRange.end > selectionRange.start
-                              ? 'border-indigo-500/50'
-                              : 'border-gray-800 focus:border-indigo-500/30'
+                            ? 'border-indigo-500/50'
+                            : 'border-gray-800 focus:border-indigo-500/30'
                             }`}
                         />
                         {splitMode === 'selection' && selectionRange.end === selectionRange.start && (
@@ -1561,8 +1625,8 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                     key={chapter.id}
                                     onClick={() => toggleRefChapter(chapter.id)}
                                     className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${selectedRefChapterIds.includes(chapter.id)
-                                        ? 'bg-indigo-900/30 text-indigo-300'
-                                        : 'hover:bg-gray-800 text-gray-400'
+                                      ? 'bg-indigo-900/30 text-indigo-300'
+                                      : 'hover:bg-gray-800 text-gray-400'
                                       }`}
                                   >
                                     <div className={`w-3 h-3 rounded border flex items-center justify-center ${selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
@@ -1635,15 +1699,27 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                   className="bg-transparent text-lg font-bold text-gray-200 focus:outline-none"
                                 />
                               </div>
-                              <button
-                                onClick={() => {
-                                  const updated = activeIdea.chapterBeats!.filter((_, i) => i !== idx);
-                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                }}
-                                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {activeIdea.linkedBookId && (
+                                  <button
+                                    onClick={() => handlePushSingleBeatToBook(idx)}
+                                    className="text-gray-500 hover:text-green-400 transition-colors p-1"
+                                    title="推送此章节到作品"
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    const updated = activeIdea.chapterBeats!.filter((_, i) => i !== idx);
+                                    onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                  }}
+                                  className="text-gray-600 hover:text-red-400 transition-colors p-1"
+                                  title="删除此章节"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               <div className="space-y-2">
