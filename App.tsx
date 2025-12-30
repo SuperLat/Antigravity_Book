@@ -339,6 +339,7 @@ const BUILTIN_PROMPTS: PromptTemplate[] = [
     description: '为章节内容生成精炼概要',
     category: 'refining',
     isBuiltIn: true,
+    isDefault: true,
     template: `请为以下章节内容生成一个简洁的概要（100-200字）：
 
 【章节内容】

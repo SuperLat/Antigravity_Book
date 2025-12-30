@@ -91,8 +91,8 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
     const characters = entities.filter(e => e.type === EntityType.CHARACTER);
     const worldItems = entities.filter(e => e.type === EntityType.WORLDVIEW);
-    const plotItems = entities.filter(e => 
-        (e.type === EntityType.PLOT || e.type === EntityType.IDEA) && 
+    const plotItems = entities.filter(e =>
+        (e.type === EntityType.PLOT || e.type === EntityType.IDEA) &&
         !['核心灵感 (Spark)', '故事主线'].includes(e.name)
     );
 
@@ -122,7 +122,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     // Update displayed message when new history arrives (Show Latest)
     // We track the last known ID to detect *new* messages
     const lastResponseIdRef = useRef<string | null>(null);
-    
+
     useEffect(() => {
         const lastResponse = aiResponses[aiResponses.length - 1];
         if (lastResponse && lastResponse.id !== lastResponseIdRef.current) {
@@ -218,7 +218,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         // Ensure we are reading the USER'S instruction (prompt), NOT the AI's generated content.
         const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user');
         if (!lastUserMsg) return;
-        
+
         // Use current settings (model/category) for regeneration to allow tweaking
         onGenerate(lastUserMsg.text, selectedModel, selectedCategory || undefined);
     };
@@ -250,7 +250,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                         <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                             {/* Characters Section */}
                             <div>
-                                <button 
+                                <button
                                     onClick={() => toggleSection('character')}
                                     className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
                                 >
@@ -288,7 +288,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
                             {/* Plot/Story Section */}
                             <div>
-                                <button 
+                                <button
                                     onClick={() => toggleSection('plot')}
                                     className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
                                 >
@@ -326,7 +326,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
                             {/* Worldview Section */}
                             <div>
-                                <button 
+                                <button
                                     onClick={() => toggleSection('world')}
                                     className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
                                 >
@@ -365,7 +365,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                             {/* Chapters Section */}
                             {chapters && chapters.length > 1 && (
                                 <div>
-                                    <button 
+                                    <button
                                         onClick={() => toggleSection('chapter')}
                                         className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 hover:text-gray-300"
                                     >
@@ -374,7 +374,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                         </div>
                                         {expandedSections.chapter ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     </button>
-                                    
+
                                     {expandedSections.chapter && (
                                         <div className="space-y-2 pl-2 mt-1">
                                             <button
@@ -395,9 +395,9 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                                                     <span className="text-gray-500 text-[10px]">{link.type === 'content' ? '正文' : '概要'}</span>
                                                                 </div>
                                                                 <button
-                                                                    onClick={() => setViewingItem({ 
-                                                                        title: chapter.title, 
-                                                                        content: link.type === 'content' ? chapter.content : (chapter.summary || '暂无概要') 
+                                                                    onClick={() => setViewingItem({
+                                                                        title: chapter.title,
+                                                                        content: link.type === 'content' ? chapter.content : (chapter.summary || '暂无概要')
                                                                     })}
                                                                     className="p-1 text-gray-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                                                     title="查看内容"
@@ -422,7 +422,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                             <div className="absolute inset-0 z-50 bg-gray-900 border-r border-gray-800 flex flex-col animate-in slide-in-from-left-4 duration-200">
                                 <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/95 backdrop-blur-sm">
                                     <h3 className="font-bold text-gray-200 truncate pr-4">{viewingItem.title}</h3>
-                                    <button 
+                                    <button
                                         onClick={() => setViewingItem(null)}
                                         className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
                                     >
@@ -484,19 +484,33 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                 </div>
 
                                 {/* Template Selector */}
-                                <div className="relative flex-1 min-w-0">
+                                <div className="relative flex-1 min-w-0 flex items-center gap-1">
                                     <select
                                         onChange={(e) => setSelectedTemplateId(e.target.value)}
                                         value={selectedTemplateId}
                                         disabled={!selectedCategory}
-                                        className={`w-full appearance-none bg-gray-800 border text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed truncate ${selectedTemplateId ? 'border-indigo-500 text-indigo-300' : 'border-gray-700'}`}
+                                        className={`flex-1 appearance-none bg-gray-800 border text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed truncate ${selectedTemplateId ? 'border-indigo-500 text-indigo-300' : 'border-gray-700'}`}
                                     >
                                         <option value="">{selectedCategory ? '选择指令模板...' : '先选分类'}</option>
                                         {filteredTemplates.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                         ))}
                                     </select>
-                                    <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <ChevronDown className="w-3 h-3 text-gray-500 absolute right-9 top-1/2 -translate-y-1/2 pointer-events-none" />
+
+                                    {/* Eye Icon to View Prompt Template */}
+                                    {selectedTemplateId && activeTemplate && (
+                                        <button
+                                            onClick={() => setViewingItem({
+                                                title: `提示词: ${activeTemplate.name}`,
+                                                content: activeTemplate.template
+                                            })}
+                                            className="p-1.5 text-gray-500 hover:text-indigo-400 hover:bg-gray-700 rounded transition-colors shrink-0"
+                                            title="查看提示词内容"
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -505,7 +519,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                 className={`text-gray-500 hover:text-white hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${showHistory ? 'bg-gray-800 text-white' : ''}`}
                                 title={showHistory ? '返回生成页' : '查看历史记录'}
                             >
-                                {showHistory ? <Sparkles className="w-4 h-4" /> : <Book className="w-4 h-4" />} 
+                                {showHistory ? <Sparkles className="w-4 h-4" /> : <Book className="w-4 h-4" />}
                                 {showHistory ? '返回' : '历史'}
                             </button>
 
@@ -535,7 +549,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
                         {/* AI Responses / Content Area */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-950 custom-scrollbar">
-                            
+
                             {/* Empty State (Only if no displayed message AND not generating AND not showing history) */}
                             {!displayedMessage && !isGenerating && !showHistory && (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-600 space-y-4">

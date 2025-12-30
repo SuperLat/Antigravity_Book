@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
-import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X } from 'lucide-react';
+import { IdeaProject, ChapterBeat, ChapterScene, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
+import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X, Eye } from 'lucide-react';
 import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
 
 const handleGenerateBeats = async () => {
@@ -785,25 +785,67 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   // Helper for Prompt Selector UI
   const PromptSelector = ({ category, value, onChange }: { category: string, value: string, onChange: (id: string) => void }) => {
     const categoryPrompts = prompts.filter(p => p.category === category);
+    const activePrompt = prompts.find(p => p.id === value);
+    const [showPromptDetail, setShowPromptDetail] = useState(false);
 
     return (
-      <div className="relative group">
-        <Wand2 className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none" />
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-8 w-32 focus:outline-none focus:border-purple-500 hover:border-gray-600 transition-colors truncate cursor-pointer"
-          title="选择提示词模板"
-        >
-          <option value="default">默认模板</option>
-          {categoryPrompts.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-      </div>
+      <>
+        <div className="relative group flex items-center gap-1">
+          <div className="relative flex-1">
+            <Wand2 className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none" />
+            <select
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-8 w-32 focus:outline-none focus:border-purple-500 hover:border-gray-600 transition-colors truncate cursor-pointer"
+              title="选择提示词模板"
+            >
+              <option value="default">默认模板</option>
+              {categoryPrompts.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Eye Icon to View Prompt */}
+          {value !== 'default' && activePrompt && (
+            <button
+              onClick={() => setShowPromptDetail(true)}
+              className="p-1.5 text-gray-500 hover:text-purple-400 hover:bg-gray-700 rounded transition-colors shrink-0"
+              title="查看提示词内容"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Prompt Detail Modal */}
+        {showPromptDetail && activePrompt && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4" onClick={() => setShowPromptDetail(false)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-white">{activePrompt.name}</h3>
+                  {activePrompt.description && (
+                    <p className="text-xs text-gray-500 mt-1">{activePrompt.description}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowPromptDetail(false)}
+                  className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed custom-scrollbar bg-gray-950 font-mono">
+                {activePrompt.template}
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -1785,16 +1827,50 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                 </button>
 
                                 {expandedBeatIndices.includes(idx) && (
-                                  <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {beat.scenes.map((scene, sIdx) => (
-                                      <div key={sIdx} className="bg-gray-950/30 border border-gray-800/50 rounded-lg p-3 text-sm hover:border-indigo-500/30 transition-colors">
-                                        <div className="flex justify-between items-start mb-1.5">
-                                          <span className="font-bold text-gray-300">{scene.sceneTitle}</span>
-                                          <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono">{scene.wordCount}</span>
-                                        </div>
-                                        <p className="text-gray-400 text-xs leading-relaxed">{scene.detail}</p>
-                                      </div>
-                                    ))}
+                                  <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <textarea
+                                      value={beat.scenes.map((scene, sIdx) =>
+                                        `场景${sIdx + 1}：${scene.sceneTitle} (${scene.wordCount})\n${scene.detail}`
+                                      ).join('\n\n')}
+                                      onChange={(e) => {
+                                        const text = e.target.value;
+                                        // 解析文本回场景数组
+                                        const sceneBlocks = text.split(/\n\n+/);
+                                        const newScenes = sceneBlocks.map(block => {
+                                          const lines = block.trim().split('\n');
+                                          if (lines.length === 0) return null;
+
+                                          const firstLine = lines[0];
+                                          // 匹配 "场景X：标题 (字数)" 格式
+                                          const match = firstLine.match(/^场景\d+[：:]\s*(.+?)\s*\((.+?)\)\s*$/);
+
+                                          if (match) {
+                                            return {
+                                              sceneTitle: match[1].trim(),
+                                              wordCount: match[2].trim(),
+                                              detail: lines.slice(1).join('\n').trim()
+                                            };
+                                          } else {
+                                            // 如果格式不匹配，尝试简单解析
+                                            return {
+                                              sceneTitle: firstLine.replace(/^场景\d+[：:]\s*/, '').trim(),
+                                              wordCount: '400字',
+                                              detail: lines.slice(1).join('\n').trim()
+                                            };
+                                          }
+                                        }).filter(s => s !== null) as ChapterScene[];
+
+                                        const updated = [...activeIdea.chapterBeats!];
+                                        updated[idx] = { ...beat, scenes: newScenes };
+                                        onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                      }}
+                                      className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed font-mono"
+                                      rows={Math.max(8, beat.scenes.length * 3)}
+                                      placeholder="场景1：场景标题 (400字)&#10;场景描述和关键线索...&#10;&#10;场景2：场景标题 (500字)&#10;场景描述..."
+                                    />
+                                    <p className="text-xs text-gray-600 mt-2 italic">
+                                      💡 提示：每个场景用空行分隔，格式为"场景X：标题 (字数)"后跟描述
+                                    </p>
                                   </div>
                                 )}
                               </div>
