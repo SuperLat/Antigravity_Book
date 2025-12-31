@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Wand2, Loader2, ChevronDown, Cpu, Eye } from 'lucide-react';
+import { X, Wand2, Loader2, ChevronDown, Cpu, Eye, Star } from 'lucide-react';
 import { Chapter, PromptTemplate, PromptCategory, ModelConfig } from '../types';
 
 interface ChapterSummaryModalProps {
@@ -36,7 +36,10 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
 }) => {
     const [summary, setSummary] = useState(chapter.summary || '');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState<PromptCategory | ''>('');
+
+    // 预设分类：章节概要主要使用润色和通用类提示词
+    const SUMMARY_CATEGORIES: PromptCategory[] = ['refining', 'general'];
+
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [selectedModelId, setSelectedModelId] = useState<string>(defaultModelId);
     const [viewingPrompt, setViewingPrompt] = useState<PromptTemplate | null>(null);
@@ -46,17 +49,33 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
         if (isOpen) {
             setSummary(chapter.summary || '');
             setSelectedModelId(defaultModelId);
-            setSelectedCategory('');
             setSelectedTemplateId('');
             setViewingPrompt(null);
         }
     }, [isOpen, chapter.id, chapter.summary, defaultModelId]);
 
+    // Load default prompt when modal opens
+    useEffect(() => {
+        if (!isOpen || prompts.length === 0) return;
+
+        const storageKey = 'summary_default_prompt';
+        const savedPromptId = localStorage.getItem(storageKey);
+
+        if (savedPromptId && prompts.find(p => p.id === savedPromptId && SUMMARY_CATEGORIES.includes(p.category))) {
+            setSelectedTemplateId(savedPromptId);
+        } else {
+            // Fall back to system default
+            const defaultPrompt = prompts.find(p => SUMMARY_CATEGORIES.includes(p.category) && p.isDefault);
+            if (defaultPrompt) {
+                setSelectedTemplateId(defaultPrompt.id);
+            }
+        }
+    }, [prompts, isOpen]);
+
     if (!isOpen) return null;
 
-    const filteredPrompts = selectedCategory
-        ? prompts.filter(p => p.category === selectedCategory)
-        : prompts;
+    // 使用预设分类过滤提示词
+    const filteredPrompts = prompts.filter(p => SUMMARY_CATEGORIES.includes(p.category));
 
     const handleGenerate = async () => {
         setIsGenerating(true);
@@ -98,63 +117,25 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
                     {/* Content */}
                     <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-4">
 
-                        {/* Model Selection */}
-                        <div>
-                            <label className="block text-sm text-gray-300 mb-2 flex items-center">
-                                <Cpu className="w-4 h-4 mr-1.5" />
-                                AI 模型
-                            </label>
-                            <div className="relative">
-                                <select
-                                    value={selectedModelId}
-                                    onChange={(e) => setSelectedModelId(e.target.value)}
-                                    className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2.5 pl-3 pr-10 rounded-lg text-sm focus:outline-none focus:border-indigo-500 hover:border-gray-600"
-                                >
-                                    {models.map(model => (
-                                        <option key={model.id} value={model.id}>
-                                            {model.name} ({model.modelName})
-                                            {model.id === defaultModelId ? ' - 默认' : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            </div>
-                        </div>
-
-                        {/* Prompt Selection */}
-                        <div className="flex gap-3">
-                            <div className="flex-1">
-                                <label className="block text-sm text-gray-300 mb-2">提示词分类</label>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-gray-300 mb-2">模型选择</label>
                                 <div className="relative">
+                                    <Cpu className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                     <select
-                                        value={selectedCategory}
-                                        onChange={(e) => {
-                                            const newCategory = e.target.value as PromptCategory | '';
-                                            setSelectedCategory(newCategory);
-
-                                            if (newCategory) {
-                                                const defaultPrompt = prompts.find(p => p.category === newCategory && p.isDefault);
-                                                if (defaultPrompt) {
-                                                    setSelectedTemplateId(defaultPrompt.id);
-                                                } else {
-                                                    setSelectedTemplateId('');
-                                                }
-                                            } else {
-                                                setSelectedTemplateId('');
-                                            }
-                                        }}
-                                        className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2.5 pl-3 pr-10 rounded-lg text-sm focus:outline-none focus:border-indigo-500 hover:border-gray-600"
+                                        value={selectedModelId}
+                                        onChange={(e) => setSelectedModelId(e.target.value)}
+                                        className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 py-2.5 pl-10 pr-10 rounded-lg text-sm focus:outline-none focus:border-indigo-500 hover:border-gray-600"
                                     >
-                                        <option value="">全部分类</option>
-                                        {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                                            <option key={key} value={key}>{label}</option>
+                                        {models.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name}</option>
                                         ))}
                                     </select>
                                     <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 </div>
                             </div>
 
-                            <div className="flex-1">
+                            <div>
                                 <label className="block text-sm text-gray-300 mb-2">提示词模板</label>
                                 <div className="relative flex items-center gap-2">
                                     <div className="relative flex-1">
@@ -184,6 +165,21 @@ export const ChapterSummaryModal: React.FC<ChapterSummaryModalProps> = ({
                                             </button>
                                         ) : null;
                                     })()}
+
+                                    {/* Set Default Button */}
+                                    {selectedTemplateId && (
+                                        <button
+                                            onClick={() => {
+                                                const storageKey = 'summary_default_prompt';
+                                                localStorage.setItem(storageKey, selectedTemplateId);
+                                                alert('已设为默认提示词！下次打开时将自动使用此提示词。');
+                                            }}
+                                            className="p-2 text-gray-500 hover:text-green-400 hover:bg-gray-700 rounded transition-colors shrink-0"
+                                            title="设为默认提示词"
+                                        >
+                                            <Star className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

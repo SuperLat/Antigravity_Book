@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Book, User, Send, Wand2, ChevronDown, ChevronRight, Cpu, X, Link, Plus, Copy, Check, RefreshCw, Eye } from 'lucide-react';
+import { Sparkles, Book, User, Send, Wand2, ChevronDown, ChevronRight, Cpu, X, Link, Plus, Copy, Check, RefreshCw, Eye, Star } from 'lucide-react';
 import { Entity, EntityType, ChatMessage, PromptTemplate, PromptCategory, Chapter, ModelConfig } from '../types';
 import { ChapterLinkModal, ChapterLink } from './ChapterLinkModal';
 
@@ -55,12 +55,33 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [showCopySuccess, setShowCopySuccess] = useState(false);
 
-    // Prompt Selection State
-    const [selectedCategory, setSelectedCategory] = useState<PromptCategory | ''>('');
+    // 预设分类：写作区只显示写作相关的提示词
+    const EDITOR_CATEGORIES: PromptCategory[] = ['drafting', 'refining', 'general'];
+
+    // Prompt Selection State - 移除 selectedCategory，使用预设分类
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
     // Model Selection State
     const [selectedModel, setSelectedModel] = useState<string>(defaultModelId || (models[0]?.id || ''));
+
+    // Initialize default prompt from localStorage
+    useEffect(() => {
+        if (prompts.length === 0 || !isOpen) return;
+
+        // 尝试从 localStorage 加载上次使用的提示词
+        const storageKey = 'editor_default_prompt';
+        const savedPromptId = localStorage.getItem(storageKey);
+
+        if (savedPromptId && prompts.find(p => p.id === savedPromptId && EDITOR_CATEGORIES.includes(p.category))) {
+            setSelectedTemplateId(savedPromptId);
+        } else {
+            // 回退到系统默认（在预设分类中查找）
+            const defaultPrompt = prompts.find(p => EDITOR_CATEGORIES.includes(p.category) && p.isDefault);
+            if (defaultPrompt) {
+                setSelectedTemplateId(defaultPrompt.id);
+            }
+        }
+    }, [prompts, isOpen]);
 
     // Update selected model if default changes
     useEffect(() => {
@@ -96,10 +117,8 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         !['核心灵感 (Spark)', '故事主线'].includes(e.name)
     );
 
-    // Filtered prompts for the dropdown
-    const filteredTemplates = selectedCategory
-        ? prompts.filter(p => p.category === selectedCategory)
-        : [];
+    // Filtered prompts for the dropdown - 使用预设分类过滤
+    const filteredTemplates = prompts.filter(p => EDITOR_CATEGORIES.includes(p.category));
 
     const activeTemplate = prompts.find(p => p.id === selectedTemplateId);
 
@@ -159,10 +178,8 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
             }
         }
 
-        let category = selectedCategory;
-        if (!category && activeTemplate) {
-            category = activeTemplate.category;
-        }
+        // 使用提示词的分类（如果有）
+        const category = activeTemplate?.category;
 
         onGenerate(finalPrompt, selectedModel, category || undefined);
         setPromptInput('');
@@ -170,7 +187,6 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
 
     const clearSelection = () => {
         setSelectedTemplateId('');
-        setSelectedCategory('');
     };
 
     const handleInsert = (content: string) => {
@@ -219,8 +235,9 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
         const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user');
         if (!lastUserMsg) return;
 
-        // Use current settings (model/category) for regeneration to allow tweaking
-        onGenerate(lastUserMsg.text, selectedModel, selectedCategory || undefined);
+        // Use current settings (model) for regeneration
+        const category = activeTemplate?.category;
+        onGenerate(lastUserMsg.text, selectedModel, category || undefined);
     };
 
     if (!isOpen) return null;
@@ -462,41 +479,19 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                     <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 </div>
 
-                                {/* Category Selector */}
-                                <div className="relative w-32 shrink-0">
-                                    <select
-                                        value={selectedCategory}
-                                        onChange={(e) => {
-                                            const newCategory = e.target.value as PromptCategory;
-                                            setSelectedCategory(newCategory);
-                                            const defaultPrompt = prompts.find(p => p.category === newCategory && p.isDefault);
-                                            if (defaultPrompt) setSelectedTemplateId(defaultPrompt.id);
-                                            else setSelectedTemplateId('');
-                                        }}
-                                        className="w-full appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="">提示词分类...</option>
-                                        {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                                            <option key={key} value={key}>{label}</option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                </div>
-
-                                {/* Template Selector */}
+                                {/* Template Selector - 移除分类选择，直接显示预设分类的提示词 */}
                                 <div className="relative flex-1 min-w-0 flex items-center gap-1">
                                     <select
                                         onChange={(e) => setSelectedTemplateId(e.target.value)}
                                         value={selectedTemplateId}
-                                        disabled={!selectedCategory}
-                                        className={`flex-1 appearance-none bg-gray-800 border text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed truncate ${selectedTemplateId ? 'border-indigo-500 text-indigo-300' : 'border-gray-700'}`}
+                                        className={`flex-1 appearance-none bg-gray-800 border text-gray-300 text-xs rounded py-1.5 pl-2 pr-6 focus:outline-none focus:border-indigo-500 truncate ${selectedTemplateId ? 'border-indigo-500 text-indigo-300' : 'border-gray-700'}`}
                                     >
-                                        <option value="">{selectedCategory ? '选择指令模板...' : '先选分类'}</option>
+                                        <option value="">选择写作指令...</option>
                                         {filteredTemplates.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                         ))}
                                     </select>
-                                    <ChevronDown className="w-3 h-3 text-gray-500 absolute right-9 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <ChevronDown className="w-3 h-3 text-gray-500 absolute right-[72px] top-1/2 -translate-y-1/2 pointer-events-none" />
 
                                     {/* Eye Icon to View Prompt Template */}
                                     {selectedTemplateId && activeTemplate && (
@@ -509,6 +504,21 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({
                                             title="查看提示词内容"
                                         >
                                             <Eye className="w-4 h-4" />
+                                        </button>
+                                    )}
+
+                                    {/* Set Default Button */}
+                                    {selectedTemplateId && (
+                                        <button
+                                            onClick={() => {
+                                                const storageKey = 'editor_default_prompt';
+                                                localStorage.setItem(storageKey, selectedTemplateId);
+                                                alert('已设为默认提示词！下次打开时将自动使用此提示词。');
+                                            }}
+                                            className="p-1.5 text-gray-500 hover:text-green-400 hover:bg-gray-700 rounded transition-colors shrink-0"
+                                            title="设为默认提示词"
+                                        >
+                                            <Star className="w-4 h-4" />
                                         </button>
                                     )}
                                 </div>
