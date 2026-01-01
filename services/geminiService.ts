@@ -1010,23 +1010,24 @@ export const generateBeatsFromVolumeContent = async (
 
   const { volumeContent, chapterCount, startChapter, referenceContext } = context;
 
-  // Optimize Character Data
+  // 优化角色数据展现，包含更多维度
   const optimizedCharacters = context.characters?.map(c =>
-    `- ${c.name} (${c.role}): ${c.description}`
+    `### ${c.name} (${c.role})\n- 性格: ${c.personality || '暂无'}\n- 简介: ${c.description || '暂无'}\n- 背景: ${c.background || '暂无'}`
   ).join('\n') || "暂无具体角色设定";
 
   const contextBlock = `
-【核心灵感】：${context.spark || ''}
-${context.core ? `【故事内核】：${context.core}` : ''}
-${context.synopsis ? `【故事概要】：${context.synopsis}` : ''}
+--- 故事基础设定 (核心) ---
+【核心灵感】：${context.spark || '未提供'}
+【故事内核】：${context.core || '未提供'}
+【故事概要】：${context.synopsis || '未提供'}
 
-【世界观设定】：
-${context.worldview ? context.worldview.slice(0, 500) + '...' : '暂无详细设定'}
+--- 世界观设定 ---
+${context.worldview ? context.worldview.slice(0, 2000) : '暂无详细设定'}
 
-【核心角色】：
+--- 核心角色阵容 ---
 ${optimizedCharacters}
 
-${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` : ''}
+${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceContext}` : ''}
   `.trim();
 
   if (customTemplate) {
@@ -1040,28 +1041,26 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
     promptContent = `
       ${contextBlock}
 
-      【待拆解的分卷/剧情内容】：
+      --- 待拆解的剧情文本 ---
       ${volumeContent}
 
-      --- 任务指令 ---
-      请结合上述【世界观】、【角色】、【前文剧情】和【故事背景】，将【待拆解的分卷内容】拆分为 ${chapterCount} 个连续的章节细纲。
-      章节编号从第 ${startChapter} 章开始，到第 ${startChapter + chapterCount - 1} 章。
+      --- 任务核心指令 (CRITICAL) ---
+      你当前的角色是资深网文架构师。请将上述【待拆解的剧情文本】拆分为 ${chapterCount} 个连续的章节细纲。
       
-      要求：
-      1. **承接上文**：如果提供了【前文剧情/参考章节】，请确保生成的章节与其无缝衔接，保持情节和人物状态的连贯性。
-      2. **章节细化**：每个章节必须拆分为 5-6 个具体的对话场景。
-      3. **场景描述**：简述每个场景中对话要交代的关键线索或冲突点。
-      4. **字数规划**：为每个场景规划字数分配，确保全章总字数在 2500 字左右（例如：场景一 400字，场景二 500字...）。
-      5. **核心冲突**：明确标出每一章的核心冲突和出场关键角色。
-      6. **严禁合并**：必须严格按照要求的 ${chapterCount} 章进行拆解。即便提供的【待拆解内容】较短，也请发挥想象力进行合理的逻辑扩充和细节填充，绝对不允许减少或合并章节。
+      【强制要求】：
+      1. **设定一致性**：剧情逻辑、力量体系、人物行为模式必须 100% 符合上文提供的【世界观】和【角色阵容】设定，严禁逻辑相悖。
+      2. **承接精准性**：如果存在【前文剧情参考】，请确保第 ${startChapter} 章与前文无缝衔接，人物状态必须连贯。
+      3. **章节细化**：每一章需拆解为 5-6 个具体的对话场景，并规划合理的字数。
+      4. **严禁合并**：必须返回恰好 ${chapterCount} 个章节（从第 ${startChapter} 章到第 ${startChapter + chapterCount - 1} 章）。
+      5. **拒绝幻觉**：不要引入与已有世界观冲突的奇幻/科幻元素，不要随意更改角色性格。
     `;
   }
 
   const finalPrompt = `
     ${promptContent}
     
-    IMPORTANT:
-    请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
+    --- 输出规范 ---
+    请严格返回 JSON 数组格式，不要包含任何 markdown 代码块标记，格式如下：
     [
       {
         "chapterTitle": "第${startChapter}章：具体标题",
@@ -1070,26 +1069,23 @@ ${referenceContext ? `【前文剧情/参考章节】：\n${referenceContext}` :
         "conflict": "核心冲突点",
         "scenes": [
           {
-             "sceneTitle": "场景一：场景简述",
+             "sceneTitle": "场景一：场景名",
              "detail": "关键线索或冲突点描述...",
              "wordCount": "400字"
           },
           ...
         ]
       },
-      {
-        "chapterTitle": "第${startChapter + 1}章：具体标题",
-        "summary": "下一章的具体事件摘要...",
-        "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点",
-        "scenes": [...]
-      }
+      ...
     ]
-    
-    必须返回恰好 ${chapterCount} 个章节。
   `;
 
-  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。请确保每一章的内容都是独特的，不要重复相同的大纲。";
+  const systemInstruction = `你是一个深耕网文创作的 AI 助手。你极其擅长逻辑推演和细节丰满。
+你的守则：
+1. 逻辑重于一切：必须严格基于用户提供的【故事内核】、【世界观】和【角色小传】进行细化，绝对不允许背离设定。
+2. 风格匹配：保持与参考内容的语境一致。
+3. 严格遵循输出数量要求：用户要求 ${chapterCount} 章，就必须生成 ${chapterCount} 章。
+4. 仅输出纯 JSON 数据，禁止任何废话。`;
 
   try {
     let text = '';

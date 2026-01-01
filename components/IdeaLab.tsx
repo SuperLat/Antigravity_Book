@@ -76,6 +76,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [useLinkedBookContext, setUseLinkedBookContext] = useState(false);
   const [linkedRefChapterIds, setLinkedRefChapterIds] = useState<string[]>([]);
   const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
+  const [refContentType, setRefContentType] = useState<'content' | 'summary'>('content'); // 参考内容类型：正文或概要
 
   // Character Generation Config
   const [charGenReqs, setCharGenReqs] = useState({
@@ -90,6 +91,11 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   // Expanded states for history items
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
   const [expandedBeatIndices, setExpandedBeatIndices] = useState<number[]>([]);
+
+  // 细纲拆解预览弹窗状态
+  const [showBeatsPreview, setShowBeatsPreview] = useState(false);
+  const [pendingBeats, setPendingBeats] = useState<ChapterBeat[] | null>(null);
+  const [lastGenerationParams, setLastGenerationParams] = useState<any>(null);
 
   const toggleHistoryExpand = (id: string) => {
     setExpandedHistoryIds(prev =>
@@ -614,9 +620,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         const selectedChapters = linkedBook.chapters.filter(c => selectedRefChapterIds.includes(c.id));
         // Sort by original order (assuming chapters array is ordered, or we could sort by index if needed)
         // Here we just keep the order found in chapters array which is usually chronological
-        referenceContext = selectedChapters.map(c =>
-          `### ${c.title}\n(概要: ${c.summary || '无'})\n${c.content ? c.content.slice(-1000) : ''}` // Take last 1000 chars of content for context
-        ).join('\n\n');
+        referenceContext = selectedChapters.map(c => {
+          if (refContentType === 'summary') {
+            return `### ${c.title}\n概要: ${c.summary || '无'}`;
+          } else {
+            // 取末尾 5000 字符，提供更丰富的上下文
+            const contentSnippet = c.content ? c.content.slice(-5000) : '';
+            return `### ${c.title}\n(概要: ${c.summary || '无'})\n正文参考:\n${contentSnippet}`;
+          }
+        }).join('\n\n');
       }
 
       const beats = await generateBeatsFromVolumeContent(
@@ -674,23 +686,110 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      // Update idea: replace current beats with new ones (not cumulative anymore)
-      onUpdateIdea(activeIdea.id, {
-        beatsSplitHistory: updatedHistory,
-        lastSplitChapterNum: lastChapterNum,
-        chapterBeats: beats, // Replace instead of append
-        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      // 保存生成参数,用于重新生成
+      setLastGenerationParams({
+        contentToProcess,
+        splitChapterCount,
+        startChapter,
+        modelConfig,
+        customTemplate,
+        referenceContext,
+        updatedHistory,
+        newSplit,
+        historyEntry
       });
 
-      setCurrentSplit(newSplit);
-      setVolumeContent(''); // Clear input
-      setShowSplitHistory(false); // Show current result
+      // 将生成结果保存到待确认状态,显示预览弹窗
+      setPendingBeats(beats);
+      setShowBeatsPreview(true);
+
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setIsGenerating(false);
     }
   };
+
+  // 确认添加章节细纲
+  const handleConfirmBeats = () => {
+    if (!activeIdea || !pendingBeats || !lastGenerationParams) return;
+
+    const { updatedHistory, newSplit, historyEntry } = lastGenerationParams;
+    const lastChapterNum = lastGenerationParams.startChapter + pendingBeats.length - 1;
+
+    // 将新生成的章节追加到现有列表后面
+    const updatedChapterBeats = [...(activeIdea.chapterBeats || []), ...pendingBeats];
+
+    // 更新idea,追加章节细纲
+    onUpdateIdea(activeIdea.id, {
+      beatsSplitHistory: updatedHistory,
+      lastSplitChapterNum: lastChapterNum,
+      chapterBeats: updatedChapterBeats, // 追加而非替换
+      generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+    });
+
+    setCurrentSplit(newSplit);
+    setVolumeContent(''); // 清空输入
+    setShowSplitHistory(false);
+
+    // 重置参考章节选择器状态，以便下次拆解时可以重新选择
+    setShowRefChapterSelector(false);
+
+    // 关闭弹窗并清空待确认数据
+    setShowBeatsPreview(false);
+    setPendingBeats(null);
+    setLastGenerationParams(null);
+  };
+
+  // 重新生成章节细纲
+  const handleRegenerateBeats = async () => {
+    if (!activeIdea || !lastGenerationParams || isGenerating) return;
+
+    const {
+      contentToProcess,
+      splitChapterCount,
+      startChapter,
+      modelConfig,
+      customTemplate,
+      referenceContext
+    } = lastGenerationParams;
+
+    setIsGenerating(true);
+    try {
+      const beats = await generateBeatsFromVolumeContent(
+        { ...modelConfig, modelName: stageModels.beats },
+        {
+          volumeContent: contentToProcess,
+          chapterCount: splitChapterCount,
+          startChapter: startChapter,
+          spark: activeIdea.spark,
+          core: activeIdea.storyCore,
+          synopsis: activeIdea.storySynopsis,
+          worldview: activeIdea.worldview,
+          characters: activeIdea.characters,
+          referenceContext: referenceContext
+        },
+        customTemplate
+      );
+
+      // 更新待确认的章节
+      setPendingBeats(beats);
+
+      // 更新生成参数中的beats数量(可能会变化)
+      setLastGenerationParams({
+        ...lastGenerationParams,
+        newSplit: {
+          ...lastGenerationParams.newSplit,
+          beats
+        }
+      });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
 
   const handleDeleteSplit = (splitId: string) => {
     if (!activeIdea || !window.confirm('确定要删除这条拆分记录吗？')) return;
@@ -1777,6 +1876,40 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               </div>
                             )}
                           </div>
+
+                          {/* 内容类型选择 - 仅在选择了参考章节时显示 */}
+                          {selectedRefChapterIds.length > 0 && (
+                            <div className="space-y-2 pt-3 border-t border-gray-800">
+                              <label className="text-xs font-medium text-gray-400">
+                                参考内容类型
+                              </label>
+                              <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                                <button
+                                  onClick={() => setRefContentType('content')}
+                                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'content'
+                                    ? 'bg-gray-800 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-300'
+                                    }`}
+                                >
+                                  正文内容
+                                </button>
+                                <button
+                                  onClick={() => setRefContentType('summary')}
+                                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'summary'
+                                    ? 'bg-gray-800 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-300'
+                                    }`}
+                                >
+                                  章节概要
+                                </button>
+                              </div>
+                              <p className="text-xs text-gray-600 italic">
+                                {refContentType === 'content'
+                                  ? '💡 使用章节的完整正文内容作为参考'
+                                  : '💡 使用章节的概要信息作为参考'}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2202,6 +2335,158 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* 细纲拆解预览弹窗 */}
+                {showBeatsPreview && pendingBeats && (
+                  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+                    <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-6xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                      {/* 标题栏 */}
+                      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
+                        <div>
+                          <h3 className="text-xl font-bold text-white">细纲拆解预览</h3>
+                          <p className="text-sm text-gray-500 mt-1">
+                            共生成 {pendingBeats.length} 个章节 · 起始章节号: {lastGenerationParams?.startChapter || 1}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowBeatsPreview(false);
+                            setPendingBeats(null);
+                            setLastGenerationParams(null);
+                          }}
+                          className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* 章节列表 */}
+                      <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-gray-950/50">
+                        {pendingBeats.map((beat, idx) => {
+                          const isExpanded = expandedChapterIndices.includes(idx);
+                          return (
+                            <div key={idx} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors">
+                              {/* 章节标题栏 */}
+                              <div
+                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50 transition-colors"
+                                onClick={() => toggleChapterExpand(idx)}
+                              >
+                                <div className="flex items-center flex-1 min-w-0">
+                                  <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0">
+                                    {(lastGenerationParams?.startChapter || 1) + idx}
+                                  </span>
+                                  <span className="text-lg font-bold text-gray-200 truncate">
+                                    {beat.chapterTitle}
+                                  </span>
+                                </div>
+                                <div className="text-gray-500 ml-4">
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-5 h-5" />
+                                  ) : (
+                                    <ChevronDown className="w-5 h-5" />
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 章节详细内容 - 折叠/展开 */}
+                              {isExpanded && (
+                                <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                      <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
+                                      <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 min-h-[96px]">
+                                        {beat.summary}
+                                      </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                      <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
+                                        <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400">
+                                          {beat.conflict}
+                                        </div>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
+                                        <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400">
+                                          {beat.keyCharacters.join(', ')}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* 场景细化 */}
+                                  {beat.scenes && beat.scenes.length > 0 && (
+                                    <div className="mt-6 border-t border-gray-800 pt-4">
+                                      <div className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center">
+                                        <List className="w-3 h-3 mr-1.5" />
+                                        场景细化
+                                        <span className="ml-2 text-[10px] lowercase font-normal opacity-50 italic">
+                                          ({beat.scenes.length} 个场景)
+                                        </span>
+                                      </div>
+                                      <div className="space-y-3">
+                                        {beat.scenes.map((scene, sIdx) => (
+                                          <div key={sIdx} className="bg-gray-950/30 border border-gray-800/30 rounded-lg p-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <span className="text-xs font-bold text-indigo-400">
+                                                场景 {sIdx + 1}: {scene.sceneTitle}
+                                              </span>
+                                              <span className="text-xs text-gray-600">{scene.wordCount}</span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 leading-relaxed">{scene.detail}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 底部操作栏 */}
+                      <div className="p-6 border-t border-gray-800 bg-gray-900 flex justify-between items-center">
+                        <button
+                          onClick={handleRegenerateBeats}
+                          disabled={isGenerating}
+                          className="px-6 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center"
+                        >
+                          {isGenerating ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              重新生成中...
+                            </>
+                          ) : (
+                            <>
+                              <Wand2 className="w-4 h-4 mr-2" />
+                              重新生成
+                            </>
+                          )}
+                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => {
+                              setShowBeatsPreview(false);
+                              setPendingBeats(null);
+                              setLastGenerationParams(null);
+                            }}
+                            className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg font-medium transition-colors"
+                          >
+                            取消
+                          </button>
+                          <button
+                            onClick={handleConfirmBeats}
+                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                          >
+                            确认添加
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2225,87 +2510,89 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       )
       }
       {/* Link Book Modal */}
-      {showLinkModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-[500px] shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-gray-800">
-              <h3 className="text-xl font-bold text-white flex items-center">
-                <LinkIcon className="w-5 h-5 mr-2 text-indigo-400" />
-                关联作品
-              </h3>
-              <p className="text-sm text-gray-400 mt-2">
-                将当前灵感与一个作品关联，以便在拆分细纲时参考作品进度，或直接将灵感转化为新作品。
-              </p>
-            </div>
+      {
+        showLinkModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl w-[500px] shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-gray-800">
+                <h3 className="text-xl font-bold text-white flex items-center">
+                  <LinkIcon className="w-5 h-5 mr-2 text-indigo-400" />
+                  关联作品
+                </h3>
+                <p className="text-sm text-gray-400 mt-2">
+                  将当前灵感与一个作品关联，以便在拆分细纲时参考作品进度，或直接将灵感转化为新作品。
+                </p>
+              </div>
 
-            <div className="p-6 space-y-4">
-              <button
-                onClick={() => {
-                  onConvertToBook(activeIdea);
-                  setShowLinkModal(false);
-                }}
-                className="w-full p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg flex items-center justify-between group transition-all"
-              >
-                <div className="flex items-center">
-                  <div className="w-10 h-10 bg-green-900/30 rounded-lg flex items-center justify-center mr-4 group-hover:bg-green-900/50 transition-colors">
-                    <Plus className="w-5 h-5 text-green-400" />
+              <div className="p-6 space-y-4">
+                <button
+                  onClick={() => {
+                    onConvertToBook(activeIdea);
+                    setShowLinkModal(false);
+                  }}
+                  className="w-full p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-green-900/30 rounded-lg flex items-center justify-center mr-4 group-hover:bg-green-900/50 transition-colors">
+                      <Plus className="w-5 h-5 text-green-400" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-gray-200">创建新作品</div>
+                      <div className="text-xs text-gray-500">使用当前灵感标题和设定创建一个全新的作品</div>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <div className="font-bold text-gray-200">创建新作品</div>
-                    <div className="text-xs text-gray-500">使用当前灵感标题和设定创建一个全新的作品</div>
+                  <ArrowRight className="w-5 h-5 text-gray-600 group-hover:text-gray-300" />
+                </button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-800"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-gray-900 px-2 text-gray-500">或者关联现有作品</span>
                   </div>
                 </div>
-                <ArrowRight className="w-5 h-5 text-gray-600 group-hover:text-gray-300" />
-              </button>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-800"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-gray-900 px-2 text-gray-500">或者关联现有作品</span>
+                <div className="space-y-2">
+                  {books && books.length > 0 ? (
+                    books.map(book => (
+                      <button
+                        key={book.id}
+                        onClick={() => {
+                          onUpdateIdea(activeIdea.id, { linkedBookId: book.id });
+                          setShowLinkModal(false);
+                        }}
+                        className="w-full p-3 bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-indigo-500/50 rounded-lg flex items-center justify-between group transition-all"
+                      >
+                        <div className="flex items-center">
+                          <BookPlus className="w-4 h-4 text-indigo-400 mr-3" />
+                          <span className="text-gray-300 font-medium">{book.title}</span>
+                        </div>
+                        {activeIdea.linkedBookId === book.id && (
+                          <span className="text-xs text-green-400 bg-green-900/20 px-2 py-1 rounded">已关联</span>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 text-sm">
+                      书架上还没有作品
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                {books && books.length > 0 ? (
-                  books.map(book => (
-                    <button
-                      key={book.id}
-                      onClick={() => {
-                        onUpdateIdea(activeIdea.id, { linkedBookId: book.id });
-                        setShowLinkModal(false);
-                      }}
-                      className="w-full p-3 bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-indigo-500/50 rounded-lg flex items-center justify-between group transition-all"
-                    >
-                      <div className="flex items-center">
-                        <BookPlus className="w-4 h-4 text-indigo-400 mr-3" />
-                        <span className="text-gray-300 font-medium">{book.title}</span>
-                      </div>
-                      {activeIdea.linkedBookId === book.id && (
-                        <span className="text-xs text-green-400 bg-green-900/20 px-2 py-1 rounded">已关联</span>
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  <div className="text-center py-4 text-gray-500 text-sm">
-                    书架上还没有作品
-                  </div>
-                )}
+              <div className="p-4 bg-gray-950 border-t border-gray-800 flex justify-end">
+                <button
+                  onClick={() => setShowLinkModal(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  取消
+                </button>
               </div>
-            </div>
-
-            <div className="p-4 bg-gray-950 border-t border-gray-800 flex justify-end">
-              <button
-                onClick={() => setShowLinkModal(false)}
-                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                取消
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
     </div >
   );
 };

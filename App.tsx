@@ -1033,6 +1033,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleBatchDeleteChapters = (ids: string[]) => {
+    if (!activeBook || ids.length === 0) return;
+    updateActiveBook(book => {
+      const newChapters = book.chapters.filter(c => !ids.includes(c.id));
+      return { ...book, chapters: newChapters };
+    });
+    // If active chapter is among those deleted, switch to the first remaining one
+    if (ids.includes(activeChapterId)) {
+      const remainingChapters = activeBook.chapters.filter(c => !ids.includes(c.id));
+      setActiveChapterId(remainingChapters[0]?.id || '');
+    }
+  };
+
+
   const handleAddEntity = (entity: Entity) => updateActiveBook(b => ({ ...b, entities: [...b.entities, entity] }));
   const handleUpdateEntity = (entity: Entity) => updateActiveBook(b => ({ ...b, entities: b.entities.map(e => e.id === entity.id ? entity : e) }));
   const handleDeleteEntity = (id: string) => updateActiveBook(b => ({ ...b, entities: b.entities.filter(e => e.id !== id) }));
@@ -1304,6 +1318,7 @@ const App: React.FC = () => {
             onOpenSettings={() => setShowSettings(true)}
             selectedEntityType={selectedEntityType}
             onSelectEntityType={setSelectedEntityType}
+            onDeleteChapters={handleBatchDeleteChapters}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden relative">
