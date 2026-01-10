@@ -841,6 +841,55 @@ export const generateDetailedWorldview = async (
   }
 };
 
+// 灵活版本：接受自由组合的上下文文本
+export const generateWorldviewWithContext = async (
+  modelConfig: ModelConfig,
+  contextText: string,
+  customTemplate?: string
+): Promise<string> => {
+  const prompt = customTemplate
+    ? customTemplate.replace(/{{context}}/g, contextText).replace(/{{input}}/g, contextText)
+    : `
+      基于以下提供的素材和背景信息，设计一个精炼且逻辑自洽的世界观背景。
+      
+      --- 参考素材 ---
+      ${contextText}
+      -------------------
+      
+      要求包含以下内容（请保持简明扼要，避免冗长）：
+      1. 世界背景：简述故事发生的空间设定。
+      2. 力量/技术体系：概括核心逻辑（如修仙等级、科技水平、魔法法则等）。
+      3. 核心冲突源：点出导致故事发生的深层诱因。
+      4. 独特设定：基于提供的素材，提炼出与众不同的世界观特色。
+      
+      请使用结构清晰的 Markdown 格式输出，重点在于核心设定的构建，非核心细节可适当留白。
+    `;
+
+  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请基于用户提供的素材，构建逻辑自洽且精炼的世界观。务必充分利用提供的所有信息。";
+
+  try {
+    if (modelConfig.provider === 'gemini') {
+      initializeGemini(modelConfig.apiKey);
+      if (!geminiClient) throw new Error("API Key missing.");
+
+      const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
+        model: modelConfig.modelName || 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction,
+          temperature: 0.9,
+          maxOutputTokens: 2048,
+        }
+      }));
+      return typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
+    } else {
+      return await callOpenAICompatible(modelConfig, [{ role: 'user', content: prompt }], systemInstruction);
+    }
+  } catch (error) {
+    throw new Error(`生成世界观失败: ${(error as Error).message}`);
+  }
+};
+
 export const generateOutlineFromWorldview = async (
   modelConfig: ModelConfig,
   worldview: string,
@@ -1003,6 +1052,10 @@ export const generateBeatsFromVolumeContent = async (
     worldview?: string;
     characters?: CharacterProfile[];
     referenceContext?: string; // New: Context from reference chapters
+    genre?: string;
+    background?: string;
+    storyLength?: string;
+    outline?: string;
   },
   customTemplate?: string
 ): Promise<ChapterBeat[]> => {
@@ -1018,6 +1071,9 @@ export const generateBeatsFromVolumeContent = async (
   const contextBlock = `
 --- 故事基础设定 (核心) ---
 【核心灵感】：${context.spark || '未提供'}
+${context.genre ? `【故事类型】：${context.genre}` : ''}
+${context.background ? `【故事背景】：${context.background}` : ''}
+${context.storyLength ? `【故事篇幅】：${context.storyLength}` : ''}
 【故事内核】：${context.core || '未提供'}
 【故事概要】：${context.synopsis || '未提供'}
 
@@ -1026,6 +1082,8 @@ ${context.worldview ? context.worldview.slice(0, 2000) : '暂无详细设定'}
 
 --- 核心角色阵容 ---
 ${optimizedCharacters}
+
+${context.outline ? `--- 全书大纲参考 ---\n${context.outline.slice(0, 2000)}\n` : ''}
 
 ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceContext}` : ''}
   `.trim();
@@ -1304,6 +1362,9 @@ export const generateCompleteOutline = async (
     storyline?: string;
     worldview?: string;
     characters?: CharacterProfile[];
+    storyLength?: string;
+    genre?: string;
+    background?: string;
   },
   customTemplate?: string
 ): Promise<string> => {
@@ -1317,6 +1378,9 @@ export const generateCompleteOutline = async (
 
   const contextBlock = `
           【核心灵感】：${data.spark}
+          ${data.genre ? `【故事类型】：${data.genre}` : ''}
+          ${data.storyLength ? `【故事篇幅】：${data.storyLength}` : ''}
+          ${data.background ? `【故事背景】：${data.background}` : ''}
           ${data.core ? `【故事内核】：${data.core}` : ''}
           ${data.synopsis ? `【故事概要】：${data.synopsis}` : ''}
           

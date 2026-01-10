@@ -81,9 +81,16 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
-    // Removed e.preventDefault() to avoid blocking standard click behavior which might be needed in some contexts
+  const handleDeleteClick = (e: React.MouseEvent, id: string, isBuiltIn?: boolean) => {
     e.stopPropagation(); // CRITICAL: Stop the click from reaching the parent div (selection)
+
+    // 如果是内置指令，添加额外确认
+    if (isBuiltIn) {
+      if (!window.confirm('确定要删除这个内置指令吗？删除后可能影响系统默认功能。')) {
+        return;
+      }
+    }
+
     onDeletePrompt(id);
   };
 
@@ -139,16 +146,14 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
                 <div className="text-xs opacity-50 line-clamp-1 mt-0.5">{prompt.description}</div>
               </div>
 
-              {!prompt.isBuiltIn && (
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteClick(e, prompt.id)}
-                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors z-10 shrink-0"
-                  title="删除"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={(e) => handleDeleteClick(e, prompt.id, prompt.isBuiltIn)}
+                className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors z-10 shrink-0"
+                title={prompt.isBuiltIn ? "删除内置指令" : "删除"}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           ))}
         </div>
@@ -227,16 +232,14 @@ export const PromptManager: React.FC<PromptManagerProps> = ({
                   {showSaved ? '已保存' : '保存'}
                 </button>
 
-                {!selectedPrompt.isBuiltIn && (
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteClick(e, selectedPrompt.id)}
-                    className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/10 rounded-lg transition-colors border border-transparent hover:border-red-900/30"
-                    title="删除指令"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteClick(e, selectedPrompt.id, selectedPrompt.isBuiltIn)}
+                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/10 rounded-lg transition-colors border border-transparent hover:border-red-900/30"
+                  title={selectedPrompt.isBuiltIn ? "删除内置指令" : "删除指令"}
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
               </div>
             </div>
 

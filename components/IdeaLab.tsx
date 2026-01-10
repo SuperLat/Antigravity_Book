@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IdeaProject, ChapterBeat, ChapterScene, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
 import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X, Eye, Star, ArrowUp, ArrowDown } from 'lucide-react';
-import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
+import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateWorldviewWithContext, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
 
 const handleGenerateBeats = async () => {
   // ... (existing code)
@@ -96,6 +96,31 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [showBeatsPreview, setShowBeatsPreview] = useState(false);
   const [pendingBeats, setPendingBeats] = useState<ChapterBeat[] | null>(null);
   const [lastGenerationParams, setLastGenerationParams] = useState<any>(null);
+
+  // 世界观生成内容选择器状态
+  const [showWorldviewContextSelector, setShowWorldviewContextSelector] = useState(false);
+  const [selectedWorldviewFields, setSelectedWorldviewFields] = useState<string[]>(['spark', 'core', 'synopsis']);
+  const [customWorldviewContext, setCustomWorldviewContext] = useState('');
+
+  // 人物小传生成内容选择器状态
+  const [showCharacterContextSelector, setShowCharacterContextSelector] = useState(false);
+  const [selectedCharacterFields, setSelectedCharacterFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview']);
+  const [customCharacterContext, setCustomCharacterContext] = useState('');
+
+  // 大纲生成内容选择器状态
+  const [showOutlineContextSelector, setShowOutlineContextSelector] = useState(false);
+  const [selectedOutlineFields, setSelectedOutlineFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters']);
+  const [customOutlineContext, setCustomOutlineContext] = useState('');
+
+  // 分卷生成内容选择器状态
+  const [showVolumeContextSelector, setShowVolumeContextSelector] = useState(false);
+  const [selectedVolumeFields, setSelectedVolumeFields] = useState<string[]>(['outline']);
+  const [customVolumeContext, setCustomVolumeContext] = useState('');
+
+  // 细纲生成内容选择器状态
+  const [showBeatsContextSelector, setShowBeatsContextSelector] = useState(false);
+  const [selectedBeatsFields, setSelectedBeatsFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline']);
+  const [customBeatsContext, setCustomBeatsContext] = useState('');
 
   const toggleHistoryExpand = (id: string) => {
     setExpandedHistoryIds(prev =>
@@ -287,13 +312,43 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
 
-      const result = await generateDetailedWorldview(tempConfig, {
-        storyLength: activeIdea.storyLength,
-        core: activeIdea.storyCore,
-        synopsis: activeIdea.storySynopsis,
-        genre: activeIdea.storyGenre,
-        background: activeIdea.storyBackground
-      }, customTemplate);
+      // 构建上下文文本：根据用户选择的字段组合内容
+      const contextParts: string[] = [];
+
+      // 字段映射
+      const fieldMap: Record<string, { label: string; value: string }> = {
+        spark: { label: '核心灵感', value: activeIdea.spark },
+        core: { label: '故事内核', value: activeIdea.storyCore || '' },
+        synopsis: { label: '故事概要', value: activeIdea.storySynopsis || '' },
+        genre: { label: '故事类型', value: activeIdea.storyGenre || '' },
+        background: { label: '故事背景', value: activeIdea.storyBackground || '' },
+        length: { label: '故事篇幅', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
+        worldview: { label: '目前世界观', value: activeIdea.worldview || '' },
+      };
+
+      // 添加选中的字段
+      selectedWorldviewFields.forEach(fieldKey => {
+        const field = fieldMap[fieldKey];
+        if (field && field.value) {
+          contextParts.push(`【${field.label}】\n${field.value}`);
+        }
+      });
+
+      // 添加自定义文本
+      if (customWorldviewContext.trim()) {
+        contextParts.push(`【自定义素材】\n${customWorldviewContext.trim()}`);
+      }
+
+      if (contextParts.length === 0 && !customWorldviewContext.trim()) {
+        alert('请至少选择一个内容字段或输入自定义素材');
+        setIsGenerating(false);
+        return;
+      }
+
+      const contextText = contextParts.join('\n\n');
+
+      // 使用新的灵活版本函数
+      const result = await generateWorldviewWithContext(tempConfig, contextText, customTemplate);
 
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
@@ -324,13 +379,42 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.character };
 
-      const result = await generateCharactersFromIdea(tempConfig, {
-        spark: activeIdea.spark,
-        core: activeIdea.storyCore,
-        synopsis: activeIdea.storySynopsis,
-        worldview: activeIdea.worldview,
+      // 动态构建上下文：根据用户选择的字段
+      const context: any = {
         requirements: charGenReqs
-      }, customTemplate);
+      };
+
+      // 字段映射
+      const fieldMap: Record<string, { key: string; value: any }> = {
+        spark: { key: 'spark', value: activeIdea.spark },
+        core: { key: 'core', value: activeIdea.storyCore },
+        synopsis: { key: 'synopsis', value: activeIdea.storySynopsis },
+        genre: { key: 'genre', value: activeIdea.storyGenre },
+        background: { key: 'background', value: activeIdea.storyBackground },
+        length: { key: 'storyLength', value: activeIdea.storyLength },
+        worldview: { key: 'worldview', value: activeIdea.worldview },
+      };
+
+      // 添加选中的字段到context
+      selectedCharacterFields.forEach(fieldKey => {
+        const field = fieldMap[fieldKey];
+        if (field && field.value) {
+          context[field.key] = field.value;
+        }
+      });
+
+      // 如果有自定义文本，附加到worldview或作为独立字段
+      if (customCharacterContext.trim()) {
+        if (context.worldview) {
+          context.worldview += `\n\n【补充素材】\n${customCharacterContext.trim()}`;
+        } else {
+          context.worldview = `【补充素材】\n${customCharacterContext.trim()}`;
+        }
+      }
+
+      // 允许用户自由选择所有字段,不强制要求 spark
+
+      const result = await generateCharactersFromIdea(tempConfig, context, customTemplate);
 
       const newCharacters: CharacterProfile[] = result.map((c, idx) => ({
         ...c,
@@ -339,7 +423,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
-        type: 'character' as any, // Temporary cast as type might not be updated in GenerationHistoryEntry definition yet
+        type: 'character' as any,
         content: JSON.stringify(newCharacters, null, 2),
         prompt: customTemplate,
         model: tempConfig.modelName,
@@ -403,17 +487,42 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
 
+      // 动态构建上下文
+      const context: any = {};
+      const fieldMap: Record<string, { key: string; value: any }> = {
+        spark: { key: 'spark', value: activeIdea.spark },
+        core: { key: 'core', value: activeIdea.storyCore },
+        synopsis: { key: 'synopsis', value: activeIdea.storySynopsis },
+        genre: { key: 'genre', value: activeIdea.storyGenre },
+        background: { key: 'background', value: activeIdea.storyBackground },
+        length: { key: 'storyLength', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
+        worldview: { key: 'worldview', value: activeIdea.worldview },
+        characters: { key: 'characters', value: activeIdea.characters },
+        storyline: { key: 'storyline', value: activeIdea.storyline },
+      };
+
+      selectedOutlineFields.forEach(fieldKey => {
+        const field = fieldMap[fieldKey];
+        if (field && field.value) {
+          context[field.key] = field.value;
+        }
+      });
+
+      // 处理自定义文本
+      if (customOutlineContext.trim()) {
+        if (context.worldview) {
+          context.worldview += `\n\n【补充素材】\n${customOutlineContext.trim()}`;
+        } else {
+          context.worldview = `【补充素材】\n${customOutlineContext.trim()}`;
+        }
+      }
+
+      // 允许用户自由选择所有字段,不强制要求 spark
+
       // UPGRADE: Use generateCompleteOutline to fuse all contexts
       const result = await generateCompleteOutline(
         tempConfig,
-        {
-          spark: activeIdea.spark,
-          core: activeIdea.storyCore,
-          synopsis: activeIdea.storySynopsis,
-          storyline: activeIdea.storyline, // Optional now
-          worldview: activeIdea.worldview,
-          characters: activeIdea.characters
-        },
+        context,
         customTemplate
       );
 
@@ -631,19 +740,51 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         }).join('\n\n');
       }
 
+      // 动态构建上下文
+      const context: any = {
+        volumeContent: contentToProcess,
+        chapterCount: splitChapterCount,
+        startChapter: startChapter,
+        referenceContext: referenceContext
+      };
+
+      const fieldMap: Record<string, { key: string; value: any }> = {
+        spark: { key: 'spark', value: activeIdea.spark },
+        core: { key: 'core', value: activeIdea.storyCore },
+        synopsis: { key: 'synopsis', value: activeIdea.storySynopsis },
+        genre: { key: 'genre', value: activeIdea.storyGenre },
+        background: { key: 'background', value: activeIdea.storyBackground },
+        length: { key: 'storyLength', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
+        worldview: { key: 'worldview', value: activeIdea.worldview },
+        characters: { key: 'characters', value: activeIdea.characters },
+        outline: { key: 'outline', value: activeIdea.outline },
+        volumes: { key: 'volumesText', value: activeIdea.volumes?.map(v => `第${v.order}卷：${v.title}\n概要：${v.summary}`).join('\n\n') }
+      };
+
+      selectedBeatsFields.forEach(fieldKey => {
+        const field = fieldMap[fieldKey];
+        if (field && field.value) {
+          if (fieldKey === 'volumes') {
+            // Special handling for volumes if needed, or just append to worldview/custom
+            context.outline = (context.outline || '') + '\n\n【已有分卷规划】\n' + field.value;
+          } else {
+            context[field.key] = field.value;
+          }
+        }
+      });
+
+      // 处理自定义文本
+      if (customBeatsContext.trim()) {
+        if (context.worldview) {
+          context.worldview += `\n\n【补充素材】\n${customBeatsContext.trim()}`;
+        } else {
+          context.worldview = `【补充素材】\n${customBeatsContext.trim()}`;
+        }
+      }
+
       const beats = await generateBeatsFromVolumeContent(
         { ...modelConfig, modelName: stageModels.beats },
-        {
-          volumeContent: contentToProcess,
-          chapterCount: splitChapterCount,
-          startChapter: startChapter,
-          spark: activeIdea.spark,
-          core: activeIdea.storyCore,
-          synopsis: activeIdea.storySynopsis,
-          worldview: activeIdea.worldview,
-          characters: activeIdea.characters,
-          referenceContext: referenceContext // Pass reference context
-        },
+        context,
         customTemplate
       );
 
@@ -1280,46 +1421,150 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
             )}
 
             {activeStage === 'world' && (
-              <div className="p-8 max-w-5xl mx-auto space-y-8">
-                {/* Detailed Worldview/Background */}
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-gray-200 flex items-center">
-                      <Globe className="w-5 h-5 mr-2 text-green-400" />
-                      详细背景/世界观 (Background)
-                    </h3>
-                    <div className="flex items-center gap-3">
-                      <PromptSelector
-                        categories="world"
-                        value={worldviewPromptId}
-                        onChange={setWorldviewPromptId}
-                        storageKey="idealab_default_prompt_worldview"
-                        label="世界观"
-                      />
-                      <ModelSelector stage="story" />
-                      <button
-                        onClick={handleGenerateDetailedBackground}
-                        disabled={isGenerating || !activeIdea.storySynopsis}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
-                      >
-                        {isGenerating ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Wand2 className="w-4 h-4 mr-2" />
-                        )}
-                        生成详细背景
-                      </button>
-                    </div>
+              <div className="p-8 max-w-7xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-gray-200 flex items-center">
+                    <Globe className="w-5 h-5 mr-2 text-green-400" />
+                    详细背景/世界观 (Background)
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    <PromptSelector
+                      categories="world"
+                      value={worldviewPromptId}
+                      onChange={setWorldviewPromptId}
+                      storageKey="idealab_default_prompt_worldview"
+                      label="世界观"
+                    />
+                    <ModelSelector stage="story" />
+                    <button
+                      onClick={() => setShowWorldviewContextSelector(!showWorldviewContextSelector)}
+                      className={`px-3 py-2 rounded-lg flex items-center text-sm font-medium transition-all ${showWorldviewContextSelector
+                        ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
+                        }`}
+                      title="选择要包含的内容"
+                    >
+                      <LinkIcon className="w-4 h-4 mr-1.5" />
+                      选择素材 ({selectedWorldviewFields.length + (customWorldviewContext ? 1 : 0)})
+                    </button>
+                    <button
+                      onClick={handleGenerateDetailedBackground}
+                      disabled={isGenerating || (selectedWorldviewFields.length === 0 && !customWorldviewContext)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 mr-2" />
+                      )}
+                      生成详细背景
+                    </button>
                   </div>
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative">
+                </div>
+
+                {/* 左右分栏布局 */}
+                <div className="flex gap-6 h-[calc(100vh-280px)]">
+                  {/* 左侧：素材选择面板（可折叠） */}
+                  {showWorldviewContextSelector && (
+                    <div className="w-80 flex-shrink-0 animate-in slide-in-from-left duration-200">
+                      <div className="bg-gray-900 border border-indigo-500/30 rounded-xl p-6 space-y-6 h-full overflow-y-auto custom-scrollbar">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider flex items-center">
+                            <LinkIcon className="w-4 h-4 mr-2" />
+                            选择素材
+                          </h4>
+                          <button
+                            onClick={() => setShowWorldviewContextSelector(false)}
+                            className="text-gray-500 hover:text-gray-300 transition-colors"
+                            title="关闭面板"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* 字段选择器 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                          <div className="space-y-2">
+                            {[
+                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+                              { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
+                              { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
+                              { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
+                              { key: 'background', label: '故事背景', available: !!activeIdea.storyBackground },
+                              { key: 'length', label: '故事篇幅', available: true },
+                              { key: 'worldview', label: '目前世界观', available: !!activeIdea.worldview },
+                            ].map(field => (
+                              <button
+                                key={field.key}
+                                onClick={() => {
+                                  if (!field.available) return;
+                                  setSelectedWorldviewFields(prev =>
+                                    prev.includes(field.key)
+                                      ? prev.filter(k => k !== field.key)
+                                      : [...prev, field.key]
+                                  );
+                                }}
+                                disabled={!field.available}
+                                className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${selectedWorldviewFields.includes(field.key)
+                                  ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
+                                  : field.available
+                                    ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
+                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{field.label}</span>
+                                  {selectedWorldviewFields.includes(field.key) && (
+                                    <Check className="w-4 h-4 text-indigo-400" />
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 自定义文本输入 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">自定义素材</label>
+                          <textarea
+                            value={customWorldviewContext}
+                            onChange={(e) => setCustomWorldviewContext(e.target.value)}
+                            placeholder="输入额外的灵感、参考资料或特殊要求..."
+                            className="w-full h-40 bg-gray-950 border border-gray-700 rounded-lg p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                          />
+                        </div>
+
+                        {/* 快捷操作 */}
+                        <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+                          <button
+                            onClick={() => setSelectedWorldviewFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                          >
+                            全选
+                          </button>
+                          <button
+                            onClick={() => setSelectedWorldviewFields([])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                          >
+                            清空
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 右侧：世界观编辑框 */}
+                  <div className="flex-1 bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative overflow-hidden">
                     <textarea
                       value={activeIdea.worldview || ''}
                       onChange={(e) => onUpdateIdea(activeIdea.id, { worldview: e.target.value })}
-                      placeholder="点击按钮生成基于内核和概要的详细世界观、力量体系、地理环境等..."
-                      className="w-full h-[700px] bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed"
+                      placeholder="点击【生成详细背景】按钮，AI 将基于左侧选中的素材生成世界观设定..."
+                      className="w-full h-full bg-transparent text-gray-300 focus:outline-none resize-none leading-relaxed custom-scrollbar"
                     />
                   </div>
-                </section>
+                </div>
               </div>
             )}
 
@@ -1380,6 +1625,17 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       />
                       <ModelSelector stage="character" />
                       <button
+                        onClick={() => setShowCharacterContextSelector(!showCharacterContextSelector)}
+                        className={`px-3 py-2 rounded-lg flex items-center text-sm font-medium transition-all ${showCharacterContextSelector
+                          ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
+                          }`}
+                        title="选择要包含的内容"
+                      >
+                        <LinkIcon className="w-4 h-4 mr-1.5" />
+                        选择素材 ({selectedCharacterFields.length + (customCharacterContext ? 1 : 0)})
+                      </button>
+                      <button
                         onClick={handleGenerateCharacters}
                         disabled={isGenerating || !activeIdea.spark.trim()}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
@@ -1391,199 +1647,295 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   </div>
                 </div>
 
-                {/* Character List */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {activeIdea.characters?.map((char, idx) => (
-                    <div key={char.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group relative">
-                      {/* Delete Button */}
+                {/* 素材选择面板和人物列表 */}
+                <div className="flex gap-6">
+                  {/* 左侧：素材选择面板（可折叠） */}
+                  {showCharacterContextSelector && (
+                    <div className="w-80 flex-shrink-0 animate-in slide-in-from-left duration-200">
+                      <div className="bg-gray-900 border border-indigo-500/30 rounded-xl p-6 space-y-6 sticky top-8">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider flex items-center">
+                            <LinkIcon className="w-4 h-4 mr-2" />
+                            选择素材
+                          </h4>
+                          <button
+                            onClick={() => setShowCharacterContextSelector(false)}
+                            className="text-gray-500 hover:text-gray-300 transition-colors"
+                            title="关闭面板"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* 字段选择器 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                          <div className="space-y-2">
+                            {[
+                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+                              { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
+                              { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
+                              { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
+                              { key: 'background', label: '故事背景', available: !!activeIdea.storyBackground },
+                              { key: 'length', label: '故事篇幅', available: true },
+                              { key: 'worldview', label: '世界观设定', available: !!activeIdea.worldview },
+                            ].map(field => (
+                              <button
+                                key={field.key}
+                                onClick={() => {
+                                  if (!field.available) return;
+                                  setSelectedCharacterFields(prev =>
+                                    prev.includes(field.key)
+                                      ? prev.filter(k => k !== field.key)
+                                      : [...prev, field.key]
+                                  );
+                                }}
+                                disabled={!field.available}
+                                className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${selectedCharacterFields.includes(field.key)
+                                  ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
+                                  : field.available
+                                    ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
+                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{field.label}</span>
+                                  {selectedCharacterFields.includes(field.key) && (
+                                    <Check className="w-4 h-4 text-indigo-400" />
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 自定义文本输入 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">自定义素材</label>
+                          <textarea
+                            value={customCharacterContext}
+                            onChange={(e) => setCustomCharacterContext(e.target.value)}
+                            placeholder="输入额外的人物设定要求、参考角色等..."
+                            className="w-full h-32 bg-gray-950 border border-gray-700 rounded-lg p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                          />
+                        </div>
+
+                        {/* 快捷操作 */}
+                        <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+                          <button
+                            onClick={() => setSelectedCharacterFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                          >
+                            全选
+                          </button>
+                          <button
+                            onClick={() => setSelectedCharacterFields([])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                          >
+                            清空
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 右侧：人物列表 */}
+                  <div className="flex-1">
+                    {/* Character List */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {activeIdea.characters?.map((char, idx) => (
+                        <div key={char.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors group relative">
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => {
+                              const updated = activeIdea.characters?.filter(c => c.id !== char.id);
+                              onUpdateIdea(activeIdea.id, { characters: updated });
+                            }}
+                            className="absolute top-4 right-4 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+
+                          {/* Name & Role */}
+                          <div className="mb-4">
+                            <input
+                              value={char.name}
+                              onChange={(e) => {
+                                const updated = [...(activeIdea.characters || [])];
+                                updated[idx] = { ...char, name: e.target.value };
+                                onUpdateIdea(activeIdea.id, { characters: updated });
+                              }}
+                              className="bg-transparent text-lg font-bold text-white focus:outline-none w-full mb-1"
+                              placeholder="角色姓名"
+                            />
+                            <input
+                              value={char.role}
+                              onChange={(e) => {
+                                const updated = [...(activeIdea.characters || [])];
+                                updated[idx] = { ...char, role: e.target.value };
+                                onUpdateIdea(activeIdea.id, { characters: updated });
+                              }}
+                              className="bg-transparent text-xs text-pink-400 focus:outline-none w-full"
+                              placeholder="角色定位 (主角/反派...)"
+                            />
+                          </div>
+
+                          {/* Basic Info */}
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">性别</label>
+                              <input
+                                value={char.gender || ''}
+                                onChange={(e) => {
+                                  const updated = [...(activeIdea.characters || [])];
+                                  updated[idx] = { ...char, gender: e.target.value };
+                                  onUpdateIdea(activeIdea.id, { characters: updated });
+                                }}
+                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">年龄</label>
+                              <input
+                                value={char.age || ''}
+                                onChange={(e) => {
+                                  const updated = [...(activeIdea.characters || [])];
+                                  updated[idx] = { ...char, age: e.target.value };
+                                  onUpdateIdea(activeIdea.id, { characters: updated });
+                                }}
+                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Description */}
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs font-bold text-gray-600 uppercase block mb-1">一句话介绍</label>
+                              <textarea
+                                value={char.description}
+                                onChange={(e) => {
+                                  const updated = [...(activeIdea.characters || [])];
+                                  updated[idx] = { ...char, description: e.target.value };
+                                  onUpdateIdea(activeIdea.id, { characters: updated });
+                                }}
+                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-20"
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => setEditingCharacterId(char.id)}
+                              className="w-full py-2 flex items-center justify-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all"
+                            >
+                              <Maximize2 className="w-3 h-3" />
+                              编辑详细设定 (性格/外貌/背景)
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Add New Character Button */}
                       <button
                         onClick={() => {
-                          const updated = activeIdea.characters?.filter(c => c.id !== char.id);
-                          onUpdateIdea(activeIdea.id, { characters: updated });
+                          const newChar: CharacterProfile = {
+                            id: Date.now().toString(),
+                            name: '新角色',
+                            role: '配角',
+                            description: '',
+                          };
+                          onUpdateIdea(activeIdea.id, { characters: [...(activeIdea.characters || []), newChar] });
                         }}
-                        className="absolute top-4 right-4 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-600 hover:text-gray-400 hover:border-gray-700 hover:bg-gray-900/30 transition-all min-h-[300px]"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Plus className="w-12 h-12 mb-4 opacity-20" />
+                        <span className="font-medium">手动添加角色</span>
                       </button>
-
-                      {/* Name & Role */}
-                      <div className="mb-4">
-                        <input
-                          value={char.name}
-                          onChange={(e) => {
-                            const updated = [...(activeIdea.characters || [])];
-                            updated[idx] = { ...char, name: e.target.value };
-                            onUpdateIdea(activeIdea.id, { characters: updated });
-                          }}
-                          className="bg-transparent text-lg font-bold text-white focus:outline-none w-full mb-1"
-                          placeholder="角色姓名"
-                        />
-                        <input
-                          value={char.role}
-                          onChange={(e) => {
-                            const updated = [...(activeIdea.characters || [])];
-                            updated[idx] = { ...char, role: e.target.value };
-                            onUpdateIdea(activeIdea.id, { characters: updated });
-                          }}
-                          className="bg-transparent text-xs text-pink-400 focus:outline-none w-full"
-                          placeholder="角色定位 (主角/反派...)"
-                        />
-                      </div>
-
-                      {/* Basic Info */}
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="text-xs text-gray-500 block mb-1">性别</label>
-                          <input
-                            value={char.gender || ''}
-                            onChange={(e) => {
-                              const updated = [...(activeIdea.characters || [])];
-                              updated[idx] = { ...char, gender: e.target.value };
-                              onUpdateIdea(activeIdea.id, { characters: updated });
-                            }}
-                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 block mb-1">年龄</label>
-                          <input
-                            value={char.age || ''}
-                            onChange={(e) => {
-                              const updated = [...(activeIdea.characters || [])];
-                              updated[idx] = { ...char, age: e.target.value };
-                              onUpdateIdea(activeIdea.id, { characters: updated });
-                            }}
-                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs font-bold text-gray-600 uppercase block mb-1">一句话介绍</label>
-                          <textarea
-                            value={char.description}
-                            onChange={(e) => {
-                              const updated = [...(activeIdea.characters || [])];
-                              updated[idx] = { ...char, description: e.target.value };
-                              onUpdateIdea(activeIdea.id, { characters: updated });
-                            }}
-                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-20"
-                          />
-                        </div>
-
-                        <button
-                          onClick={() => setEditingCharacterId(char.id)}
-                          className="w-full py-2 flex items-center justify-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all"
-                        >
-                          <Maximize2 className="w-3 h-3" />
-                          编辑详细设定 (性格/外貌/背景)
-                        </button>
-                      </div>
                     </div>
-                  ))}
 
-                  {/* Add New Character Button */}
-                  <button
-                    onClick={() => {
-                      const newChar: CharacterProfile = {
-                        id: Date.now().toString(),
-                        name: '新角色',
-                        role: '配角',
-                        description: '',
-                      };
-                      onUpdateIdea(activeIdea.id, { characters: [...(activeIdea.characters || []), newChar] });
-                    }}
-                    className="border-2 border-dashed border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-600 hover:text-gray-400 hover:border-gray-700 hover:bg-gray-900/30 transition-all min-h-[300px]"
-                  >
-                    <Plus className="w-12 h-12 mb-4 opacity-20" />
-                    <span className="font-medium">手动添加角色</span>
-                  </button>
+                    {/* Character Edit Modal */}
+                    {editingCharacterId && (() => {
+                      const char = activeIdea.characters?.find(c => c.id === editingCharacterId);
+                      if (!char) return null;
+                      return (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+                          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
+                              <div>
+                                <h3 className="text-xl font-bold text-white">{char.name || '未命名角色'} - 详细设定</h3>
+                                <p className="text-sm text-gray-500 mt-1">{char.role} · {char.gender} · {char.age}</p>
+                              </div>
+                              <button
+                                onClick={() => setEditingCharacterId(null)}
+                                className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-gray-950/50">
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-indigo-400 uppercase tracking-wider">
+                                  <User className="w-4 h-4 mr-2" />
+                                  性格特征
+                                </label>
+                                <textarea
+                                  value={char.personality || ''}
+                                  onChange={(e) => {
+                                    const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, personality: e.target.value } : c);
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                  placeholder="描述角色的性格、习惯、说话方式..."
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-pink-400 uppercase tracking-wider">
+                                  <Maximize2 className="w-4 h-4 mr-2" />
+                                  外貌描写
+                                </label>
+                                <textarea
+                                  value={char.appearance || ''}
+                                  onChange={(e) => {
+                                    const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, appearance: e.target.value } : c);
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                  placeholder="描述角色的外貌、穿着、体态..."
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <label className="flex items-center text-sm font-bold text-green-400 uppercase tracking-wider">
+                                  <History className="w-4 h-4 mr-2" />
+                                  背景故事
+                                </label>
+                                <textarea
+                                  value={char.background || ''}
+                                  onChange={(e) => {
+                                    const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, background: e.target.value } : c);
+                                    onUpdateIdea(activeIdea.id, { characters: updated });
+                                  }}
+                                  className="w-full h-64 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                                  placeholder="描述角色的过去、经历、秘密..."
+                                />
+                              </div>
+                            </div>
+
+                            <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
+                              <button
+                                onClick={() => setEditingCharacterId(null)}
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                              >
+                                完成编辑
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
-
-                {/* Character Edit Modal */}
-                {editingCharacterId && (() => {
-                  const char = activeIdea.characters?.find(c => c.id === editingCharacterId);
-                  if (!char) return null;
-                  return (
-                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
-                      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
-                          <div>
-                            <h3 className="text-xl font-bold text-white">{char.name || '未命名角色'} - 详细设定</h3>
-                            <p className="text-sm text-gray-500 mt-1">{char.role} · {char.gender} · {char.age}</p>
-                          </div>
-                          <button
-                            onClick={() => setEditingCharacterId(null)}
-                            className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-gray-950/50">
-                          <div className="space-y-3">
-                            <label className="flex items-center text-sm font-bold text-indigo-400 uppercase tracking-wider">
-                              <User className="w-4 h-4 mr-2" />
-                              性格特征
-                            </label>
-                            <textarea
-                              value={char.personality || ''}
-                              onChange={(e) => {
-                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, personality: e.target.value } : c);
-                                onUpdateIdea(activeIdea.id, { characters: updated });
-                              }}
-                              className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                              placeholder="描述角色的性格、习惯、说话方式..."
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <label className="flex items-center text-sm font-bold text-pink-400 uppercase tracking-wider">
-                              <Maximize2 className="w-4 h-4 mr-2" />
-                              外貌描写
-                            </label>
-                            <textarea
-                              value={char.appearance || ''}
-                              onChange={(e) => {
-                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, appearance: e.target.value } : c);
-                                onUpdateIdea(activeIdea.id, { characters: updated });
-                              }}
-                              className="w-full h-32 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                              placeholder="描述角色的外貌、穿着、体态..."
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <label className="flex items-center text-sm font-bold text-green-400 uppercase tracking-wider">
-                              <History className="w-4 h-4 mr-2" />
-                              背景故事
-                            </label>
-                            <textarea
-                              value={char.background || ''}
-                              onChange={(e) => {
-                                const updated = activeIdea.characters!.map(c => c.id === char.id ? { ...c, background: e.target.value } : c);
-                                onUpdateIdea(activeIdea.id, { characters: updated });
-                              }}
-                              className="w-full h-64 bg-gray-900 border border-gray-800 rounded-xl p-4 text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                              placeholder="描述角色的过去、经历、秘密..."
-                            />
-                          </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
-                          <button
-                            onClick={() => setEditingCharacterId(null)}
-                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
-                          >
-                            完成编辑
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             )}
 
@@ -1606,6 +1958,17 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       />
                       <ModelSelector stage="story" />
                       <button
+                        onClick={() => setShowOutlineContextSelector(!showOutlineContextSelector)}
+                        className={`px-3 py-2 rounded-lg flex items-center text-sm font-medium transition-all ${showOutlineContextSelector
+                          ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
+                          }`}
+                        title="选择要包含的内容"
+                      >
+                        <LinkIcon className="w-4 h-4 mr-1.5" />
+                        选择素材 ({selectedOutlineFields.length + (customOutlineContext ? 1 : 0)})
+                      </button>
+                      <button
                         onClick={handleGenerateCompleteOutline}
                         disabled={isGenerating}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
@@ -1619,12 +1982,110 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                       </button>
                     </div>
                   </div>
-                  <textarea
-                    value={activeIdea.outline || ''}
-                    onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
-                    placeholder="包含故事主线、分卷细纲及支线剧情..."
-                    className="w-full h-[800px] bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
-                  />
+
+                  {/* 左右分栏布局 */}
+                  <div className="flex gap-6">
+                    {/* 左侧：素材选择面板（可折叠） */}
+                    {showOutlineContextSelector && (
+                      <div className="w-80 flex-shrink-0 animate-in slide-in-from-left duration-200">
+                        <div className="bg-gray-900 border border-indigo-500/30 rounded-xl p-6 space-y-6 sticky top-8 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider flex items-center">
+                              <LinkIcon className="w-4 h-4 mr-2" />
+                              选择素材
+                            </h4>
+                            <button
+                              onClick={() => setShowOutlineContextSelector(false)}
+                              className="text-gray-500 hover:text-gray-300 transition-colors"
+                              title="关闭面板"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* 字段选择器 */}
+                          <div className="space-y-3">
+                            <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                            <div className="space-y-2">
+                              {[
+                                { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+                                { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
+                                { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
+                                { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
+                                { key: 'background', label: '故事背景', available: !!activeIdea.storyBackground },
+                                { key: 'length', label: '故事篇幅', available: true },
+                                { key: 'worldview', label: '世界观设定', available: !!activeIdea.worldview },
+                                { key: 'characters', label: '人物小传', available: !!activeIdea.characters?.length },
+
+                              ].map(field => (
+                                <button
+                                  key={field.key}
+                                  onClick={() => {
+                                    if (!field.available) return;
+                                    setSelectedOutlineFields(prev =>
+                                      prev.includes(field.key)
+                                        ? prev.filter(k => k !== field.key)
+                                        : [...prev, field.key]
+                                    );
+                                  }}
+                                  disabled={!field.available}
+                                  className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${selectedOutlineFields.includes(field.key)
+                                    ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
+                                    : field.available
+                                      ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
+                                      : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                    }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span>{field.label}</span>
+                                    {selectedOutlineFields.includes(field.key) && (
+                                      <Check className="w-4 h-4 text-indigo-400" />
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 自定义文本输入 */}
+                          <div className="space-y-3">
+                            <label className="text-xs font-bold text-gray-500 uppercase">自定义素材</label>
+                            <textarea
+                              value={customOutlineContext}
+                              onChange={(e) => setCustomOutlineContext(e.target.value)}
+                              placeholder="输入额外的大纲要求、参考素材等..."
+                              className="w-full h-32 bg-gray-950 border border-gray-700 rounded-lg p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                            />
+                          </div>
+
+                          {/* 快捷操作 */}
+                          <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+                            <button
+                              onClick={() => setSelectedOutlineFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters'])}
+                              className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                            >
+                              全选
+                            </button>
+                            <button
+                              onClick={() => setSelectedOutlineFields([])}
+                              className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
+                            >
+                              清空
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex-1">
+                      <textarea
+                        value={activeIdea.outline || ''}
+                        onChange={(e) => onUpdateIdea(activeIdea.id, { outline: e.target.value })}
+                        placeholder="包含故事主线、分卷细纲及支线剧情..."
+                        className="w-full h-[800px] bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-200 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                      />
+                    </div>
+                  </div>
                 </section>
               </div>
             )}
@@ -1761,6 +2222,17 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     />
                     <ModelSelector stage="beats" />
                     <button
+                      onClick={() => setShowBeatsContextSelector(!showBeatsContextSelector)}
+                      className={`px-3 py-2 rounded-lg flex items-center text-sm font-medium transition-all ${showBeatsContextSelector
+                        ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
+                        }`}
+                      title="选择要包含的创作素材"
+                    >
+                      <LinkIcon className="w-4 h-4 mr-1.5" />
+                      素材 ({selectedBeatsFields.length + (customBeatsContext ? 1 : 0)})
+                    </button>
+                    <button
                       onClick={handlePushBeatsToBook}
                       disabled={!activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0}
                       className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center text-sm font-medium transition-all shadow-lg shadow-green-500/20"
@@ -1772,567 +2244,662 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                  {/* Left: Input/Config Area */}
-                  <div className="xl:col-span-1 space-y-6">
-                    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
-
-                      {/* Split Mode Selector */}
-                      <div className="space-y-3">
-                        <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
-                          <div className="flex items-center">
-                            <Plus className="w-4 h-4 mr-2 text-indigo-400" />
-                            拆解范围
-                          </div>
-                          {splitMode === 'selection' && (
-                            <span className="text-xs text-indigo-400">
-                              已选中 {selectionRange.end - selectionRange.start} 字
-                            </span>
-                          )}
-                        </label>
-                        <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                <div className="flex gap-8">
+                  {/* 左侧：素材选择面板（可折叠） */}
+                  {showBeatsContextSelector && (
+                    <div className="w-80 flex-shrink-0 animate-in slide-in-from-left duration-200">
+                      <div className="bg-gray-900 border border-indigo-500/30 rounded-xl p-6 space-y-6 sticky top-8 max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider flex items-center">
+                            <LinkIcon className="w-4 h-4 mr-2" />
+                            创作素材选取
+                          </h4>
                           <button
-                            onClick={() => setSplitMode('full')}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'full'
-                              ? 'bg-gray-800 text-white shadow-sm'
-                              : 'text-gray-500 hover:text-gray-300'}`}
+                            onClick={() => setShowBeatsContextSelector(false)}
+                            className="text-gray-500 hover:text-gray-300 transition-colors"
+                            title="关闭面板"
                           >
-                            全部内容
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* 字段选择器 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">参考设定</label>
+                          <div className="grid grid-cols-1 gap-2">
+                            {[
+                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+                              { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
+                              { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
+                              { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
+                              { key: 'background', label: '故事背景', available: !!activeIdea.storyBackground },
+                              { key: 'length', label: '故事篇幅', available: true },
+                              { key: 'worldview', label: '世界观设定', available: !!activeIdea.worldview },
+                              { key: 'characters', label: '人物小传', available: !!activeIdea.characters?.length },
+                              { key: 'outline', label: '全书大纲', available: !!activeIdea.outline },
+
+                            ].map(field => (
+                              <button
+                                key={field.key}
+                                onClick={() => {
+                                  if (!field.available) return;
+                                  setSelectedBeatsFields(prev =>
+                                    prev.includes(field.key)
+                                      ? prev.filter(k => k !== field.key)
+                                      : [...prev, field.key]
+                                  );
+                                }}
+                                disabled={!field.available}
+                                className={`w-full px-4 py-2 rounded-lg text-xs font-medium transition-all text-left ${selectedBeatsFields.includes(field.key)
+                                  ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
+                                  : field.available
+                                    ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
+                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{field.label}</span>
+                                  {selectedBeatsFields.includes(field.key) && (
+                                    <Check className="w-4 h-4 text-indigo-400" />
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 自定义文本输入 */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-gray-500 uppercase">额外指令/上下文</label>
+                          <textarea
+                            value={customBeatsContext}
+                            onChange={(e) => setCustomBeatsContext(e.target.value)}
+                            placeholder="输入补充的剧情提示、风格要求等..."
+                            className="w-full h-24 bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors resize-none leading-relaxed"
+                          />
+                        </div>
+
+                        {/* 快捷操作 */}
+                        <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+                          <button
+                            onClick={() => setSelectedBeatsFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline'])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[10px] font-medium transition-colors"
+                          >
+                            全选
                           </button>
                           <button
-                            onClick={() => setSplitMode('selection')}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'selection'
-                              ? 'bg-gray-800 text-white shadow-sm'
-                              : 'text-gray-500 hover:text-gray-300'}`}
+                            onClick={() => setSelectedBeatsFields([])}
+                            className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[10px] font-medium transition-colors"
                           >
-                            选中片段
+                            清空
                           </button>
                         </div>
                       </div>
+                    </div>
+                  )}
 
-                      <div className="space-y-3">
-                        <textarea
-                          ref={textareaRef}
-                          onSelect={handleTextareaSelect}
-                          value={volumeContent}
-                          onChange={(e) => setVolumeContent(e.target.value)}
-                          placeholder="此处会自动填充从分卷推送的内容，您也可以手动粘贴一段剧情。选中部分文字可进行局部拆分。"
-                          className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${splitMode === 'selection' && selectionRange.end > selectionRange.start
-                            ? 'border-indigo-500/50'
-                            : 'border-gray-800 focus:border-indigo-500/30'
-                            }`}
-                        />
-                        {splitMode === 'selection' && selectionRange.end === selectionRange.start && (
-                          <div className="text-xs text-yellow-500 flex items-center">
-                            <span className="mr-1">⚠️</span> 请在上方输入框中用鼠标选中需要拆分的文字
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex-1 grid grid-cols-1 xl:grid-cols-4 gap-8">
+                    {/* Left: Input/Config Area */}
+                    <div className="xl:col-span-1 space-y-6">
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
 
-                      {/* Reference Chapter Selector (New) */}
-                      {linkedBook && availableRefChapters.length > 0 && (
-                        <div className="space-y-3 pt-3 border-t border-gray-800">
+                        {/* Split Mode Selector */}
+                        <div className="space-y-3">
                           <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
                             <div className="flex items-center">
-                              <LinkIcon className="w-4 h-4 mr-2 text-indigo-400" />
-                              参考书籍章节
+                              <Plus className="w-4 h-4 mr-2 text-indigo-400" />
+                              拆解范围
                             </div>
-                            <span className="text-xs text-gray-500">
-                              已选 {selectedRefChapterIds.length} 章
-                            </span>
-                          </label>
-
-                          <div className="space-y-2">
-                            <button
-                              onClick={() => setShowRefChapterSelector(!showRefChapterSelector)}
-                              className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400 text-left flex items-center justify-between hover:border-gray-700 transition-colors"
-                            >
-                              <span>
-                                {selectedRefChapterIds.length > 0
-                                  ? `参考: ${availableRefChapters.find(c => c.id === selectedRefChapterIds[0])?.title.substring(0, 15)}... 等`
-                                  : '点击选择参考章节 (可选)'}
+                            {splitMode === 'selection' && (
+                              <span className="text-xs text-indigo-400">
+                                已选中 {selectionRange.end - selectionRange.start} 字
                               </span>
-                              {showRefChapterSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            )}
+                          </label>
+                          <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                            <button
+                              onClick={() => setSplitMode('full')}
+                              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'full'
+                                ? 'bg-gray-800 text-white shadow-sm'
+                                : 'text-gray-500 hover:text-gray-300'}`}
+                            >
+                              全部内容
                             </button>
+                            <button
+                              onClick={() => setSplitMode('selection')}
+                              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${splitMode === 'selection'
+                                ? 'bg-gray-800 text-white shadow-sm'
+                                : 'text-gray-500 hover:text-gray-300'}`}
+                            >
+                              选中片段
+                            </button>
+                          </div>
+                        </div>
 
-                            {showRefChapterSelector && (
-                              <div className="bg-gray-950 border border-gray-800 rounded-lg max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                                {availableRefChapters.slice().reverse().map(chapter => (
-                                  <div
-                                    key={chapter.id}
-                                    onClick={() => toggleRefChapter(chapter.id)}
-                                    className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${selectedRefChapterIds.includes(chapter.id)
-                                      ? 'bg-indigo-900/30 text-indigo-300'
-                                      : 'hover:bg-gray-800 text-gray-400'
+                        <div className="space-y-3">
+                          <textarea
+                            ref={textareaRef}
+                            onSelect={handleTextareaSelect}
+                            value={volumeContent}
+                            onChange={(e) => setVolumeContent(e.target.value)}
+                            placeholder="此处会自动填充从分卷推送的内容，您也可以手动粘贴一段剧情。选中部分文字可进行局部拆分。"
+                            className={`w-full h-64 bg-gray-950 border rounded-xl p-4 text-xs text-gray-400 focus:outline-none transition-colors resize-none leading-relaxed ${splitMode === 'selection' && selectionRange.end > selectionRange.start
+                              ? 'border-indigo-500/50'
+                              : 'border-gray-800 focus:border-indigo-500/30'
+                              }`}
+                          />
+                          {splitMode === 'selection' && selectionRange.end === selectionRange.start && (
+                            <div className="text-xs text-yellow-500 flex items-center">
+                              <span className="mr-1">⚠️</span> 请在上方输入框中用鼠标选中需要拆分的文字
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Reference Chapter Selector (New) */}
+                        {linkedBook && availableRefChapters.length > 0 && (
+                          <div className="space-y-3 pt-3 border-t border-gray-800">
+                            <label className="text-sm font-medium text-gray-300 flex items-center justify-between">
+                              <div className="flex items-center">
+                                <LinkIcon className="w-4 h-4 mr-2 text-indigo-400" />
+                                参考书籍章节
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                已选 {selectedRefChapterIds.length} 章
+                              </span>
+                            </label>
+
+                            <div className="space-y-2">
+                              <button
+                                onClick={() => setShowRefChapterSelector(!showRefChapterSelector)}
+                                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400 text-left flex items-center justify-between hover:border-gray-700 transition-colors"
+                              >
+                                <span>
+                                  {selectedRefChapterIds.length > 0
+                                    ? `参考: ${availableRefChapters.find(c => c.id === selectedRefChapterIds[0])?.title.substring(0, 15)}... 等`
+                                    : '点击选择参考章节 (可选)'}
+                                </span>
+                                {showRefChapterSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              </button>
+
+                              {showRefChapterSelector && (
+                                <div className="bg-gray-950 border border-gray-800 rounded-lg max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                  {availableRefChapters.slice().reverse().map(chapter => (
+                                    <div
+                                      key={chapter.id}
+                                      onClick={() => toggleRefChapter(chapter.id)}
+                                      className={`p-2 rounded cursor-pointer flex items-center gap-2 text-xs transition-colors ${selectedRefChapterIds.includes(chapter.id)
+                                        ? 'bg-indigo-900/30 text-indigo-300'
+                                        : 'hover:bg-gray-800 text-gray-400'
+                                        }`}
+                                    >
+                                      <div className={`w-3 h-3 rounded border flex items-center justify-center ${selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
+                                        }`}>
+                                        {selectedRefChapterIds.includes(chapter.id) && <Check className="w-2 h-2 text-white" />}
+                                      </div>
+                                      <span className="truncate">{chapter.title}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 内容类型选择 - 仅在选择了参考章节时显示 */}
+                            {selectedRefChapterIds.length > 0 && (
+                              <div className="space-y-2 pt-3 border-t border-gray-800">
+                                <label className="text-xs font-medium text-gray-400">
+                                  参考内容类型
+                                </label>
+                                <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                                  <button
+                                    onClick={() => setRefContentType('content')}
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'content'
+                                      ? 'bg-gray-800 text-white shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-300'
                                       }`}
                                   >
-                                    <div className={`w-3 h-3 rounded border flex items-center justify-center ${selectedRefChapterIds.includes(chapter.id) ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'
-                                      }`}>
-                                      {selectedRefChapterIds.includes(chapter.id) && <Check className="w-2 h-2 text-white" />}
-                                    </div>
-                                    <span className="truncate">{chapter.title}</span>
-                                  </div>
-                                ))}
+                                    正文内容
+                                  </button>
+                                  <button
+                                    onClick={() => setRefContentType('summary')}
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'summary'
+                                      ? 'bg-gray-800 text-white shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-300'
+                                      }`}
+                                  >
+                                    章节概要
+                                  </button>
+                                </div>
+                                <p className="text-xs text-gray-600 italic">
+                                  {refContentType === 'content'
+                                    ? '💡 使用章节的完整正文内容作为参考'
+                                    : '💡 使用章节的概要信息作为参考'}
+                                </p>
                               </div>
                             )}
                           </div>
+                        )}
 
-                          {/* 内容类型选择 - 仅在选择了参考章节时显示 */}
-                          {selectedRefChapterIds.length > 0 && (
-                            <div className="space-y-2 pt-3 border-t border-gray-800">
-                              <label className="text-xs font-medium text-gray-400">
-                                参考内容类型
-                              </label>
-                              <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
-                                <button
-                                  onClick={() => setRefContentType('content')}
-                                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'content'
-                                    ? 'bg-gray-800 text-white shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-300'
-                                    }`}
-                                >
-                                  正文内容
-                                </button>
-                                <button
-                                  onClick={() => setRefContentType('summary')}
-                                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${refContentType === 'summary'
-                                    ? 'bg-gray-800 text-white shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-300'
-                                    }`}
-                                >
-                                  章节概要
-                                </button>
-                              </div>
-                              <p className="text-xs text-gray-600 italic">
-                                {refContentType === 'content'
-                                  ? '💡 使用章节的完整正文内容作为参考'
-                                  : '💡 使用章节的概要信息作为参考'}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <label className="text-sm font-medium text-gray-300">起始章节号</label>
-                          <input
-                            type="number"
-                            value={startChapterNum}
-                            onChange={(e) => setStartChapterNum(Math.max(1, parseInt(e.target.value) || 1))}
-                            className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
-                            min="1"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <label className="text-sm font-medium text-gray-300">预计拆分章数</label>
-                          <input
-                            type="number"
-                            value={splitChapterCount}
-                            onChange={(e) => setSplitChapterCount(Math.max(1, parseInt(e.target.value) || 1))}
-                            className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
-                            min="1"
-                            max="50"
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={handleSplitVolume}
-                        disabled={isGenerating || !volumeContent.trim() || (splitMode === 'selection' && selectionRange.end <= selectionRange.start)}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center font-medium transition-all shadow-lg shadow-indigo-500/20"
-                      >
-                        {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                        {splitMode === 'full' ? '拆解全部内容' : '拆解选中片段'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Right: Beats List */}
-                  <div className="xl:col-span-3 space-y-4">
-                    {activeIdea.chapterBeats && activeIdea.chapterBeats.length > 0 ? (
-                      <>
-                        {/* 控制栏：排序、每页显示条数 */}
-                        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            {/* 总数显示 */}
-                            <div className="text-sm text-gray-400">
-                              共 <span className="text-indigo-400 font-bold">{activeIdea.chapterBeats.length}</span> 个章节
-                            </div>
-
-                            {/* 排序按钮 */}
-                            <button
-                              onClick={() => setBeatsSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                              title={beatsSortOrder === 'asc' ? '正序排列' : '倒序排列'}
-                            >
-                              {beatsSortOrder === 'asc' ? (
-                                <>
-                                  <ArrowUp className="w-3.5 h-3.5" />
-                                  正序
-                                </>
-                              ) : (
-                                <>
-                                  <ArrowDown className="w-3.5 h-3.5" />
-                                  倒序
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-                          {/* 每页显示条数 */}
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">每页显示</span>
-                            <select
-                              value={beatsPerPage}
-                              onChange={(e) => {
-                                setBeatsPerPage(Number(e.target.value));
-                                setBeatsCurrentPage(1); // 重置到第一页
-                              }}
-                              className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500"
-                            >
-                              <option value={5}>5 条</option>
-                              <option value={10}>10 条</option>
-                              <option value={20}>20 条</option>
-                              <option value={50}>50 条</option>
-                              <option value={100}>100 条</option>
-                              <option value={activeIdea.chapterBeats.length}>全部</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* 章节列表 */}
                         <div className="space-y-4">
-                          {(() => {
-                            // 排序逻辑
-                            const sortedBeats = [...activeIdea.chapterBeats];
-                            if (beatsSortOrder === 'desc') {
-                              sortedBeats.reverse();
-                            }
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-gray-300">起始章节号</label>
+                            <input
+                              type="number"
+                              value={startChapterNum}
+                              onChange={(e) => setStartChapterNum(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                              min="1"
+                            />
+                          </div>
 
-                            // 分页逻辑
-                            const totalPages = Math.ceil(sortedBeats.length / beatsPerPage);
-                            const startIndex = (beatsCurrentPage - 1) * beatsPerPage;
-                            const endIndex = startIndex + beatsPerPage;
-                            const paginatedBeats = sortedBeats.slice(startIndex, endIndex);
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-gray-300">预计拆分章数</label>
+                            <input
+                              type="number"
+                              value={splitChapterCount}
+                              onChange={(e) => setSplitChapterCount(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500/30 text-sm"
+                              min="1"
+                              max="50"
+                            />
+                          </div>
+                        </div>
 
-                            return paginatedBeats.map((beat, displayIdx) => {
-                              // 计算原始索引（用于更新数据）
-                              const originalIdx = beatsSortOrder === 'asc'
-                                ? startIndex + displayIdx
-                                : activeIdea.chapterBeats!.length - 1 - (startIndex + displayIdx);
+                        <button
+                          onClick={handleSplitVolume}
+                          disabled={isGenerating || !volumeContent.trim() || (splitMode === 'selection' && selectionRange.end <= selectionRange.start)}
+                          className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center font-medium transition-all shadow-lg shadow-indigo-500/20"
+                        >
+                          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                          {splitMode === 'full' ? '拆解全部内容' : '拆解选中片段'}
+                        </button>
+                      </div>
+                    </div>
 
-                              const isChapterExpanded = expandedChapterIndices.includes(originalIdx);
+                    {/* Right: Beats List */}
+                    <div className="xl:col-span-3 space-y-4">
+                      {activeIdea.chapterBeats && activeIdea.chapterBeats.length > 0 ? (
+                        <>
+                          {/* 控制栏：排序、每页显示条数 */}
+                          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              {/* 总数显示 */}
+                              <div className="text-sm text-gray-400">
+                                共 <span className="text-indigo-400 font-bold">{activeIdea.chapterBeats.length}</span> 个章节
+                              </div>
 
-                              return (
-                                <div key={originalIdx} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors group">
-                                  {/* 章节标题栏 - 始终显示 */}
-                                  <div
-                                    className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50 transition-colors"
-                                    onClick={() => toggleChapterExpand(originalIdx)}
-                                  >
-                                    <div className="flex items-center flex-1 min-w-0">
-                                      <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0">
-                                        {originalIdx + 1}
-                                      </span>
-                                      <input
-                                        value={beat.chapterTitle}
-                                        onChange={(e) => {
-                                          e.stopPropagation();
-                                          const updated = [...activeIdea.chapterBeats!];
-                                          updated[originalIdx] = { ...beat, chapterTitle: e.target.value };
-                                          onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="bg-transparent text-lg font-bold text-gray-200 focus:outline-none flex-1 min-w-0"
-                                        placeholder="章节标题"
-                                      />
-                                    </div>
+                              {/* 排序按钮 */}
+                              <button
+                                onClick={() => setBeatsSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+                                title={beatsSortOrder === 'asc' ? '正序排列' : '倒序排列'}
+                              >
+                                {beatsSortOrder === 'asc' ? (
+                                  <>
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                    正序
+                                  </>
+                                ) : (
+                                  <>
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                    倒序
+                                  </>
+                                )}
+                              </button>
+                            </div>
 
-                                    <div className="flex items-center gap-2 ml-4">
-                                      {/* 操作按钮 */}
-                                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {activeIdea.linkedBookId && (
+                            {/* 每页显示条数 */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">每页显示</span>
+                              <select
+                                value={beatsPerPage}
+                                onChange={(e) => {
+                                  setBeatsPerPage(Number(e.target.value));
+                                  setBeatsCurrentPage(1); // 重置到第一页
+                                }}
+                                className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value={5}>5 条</option>
+                                <option value={10}>10 条</option>
+                                <option value={20}>20 条</option>
+                                <option value={50}>50 条</option>
+                                <option value={100}>100 条</option>
+                                <option value={activeIdea.chapterBeats.length}>全部</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* 章节列表 */}
+                          <div className="space-y-4">
+                            {(() => {
+                              // 排序逻辑
+                              const sortedBeats = [...activeIdea.chapterBeats];
+                              if (beatsSortOrder === 'desc') {
+                                sortedBeats.reverse();
+                              }
+
+                              // 分页逻辑
+                              const totalPages = Math.ceil(sortedBeats.length / beatsPerPage);
+                              const startIndex = (beatsCurrentPage - 1) * beatsPerPage;
+                              const endIndex = startIndex + beatsPerPage;
+                              const paginatedBeats = sortedBeats.slice(startIndex, endIndex);
+
+                              return paginatedBeats.map((beat, displayIdx) => {
+                                // 计算原始索引（用于更新数据）
+                                const originalIdx = beatsSortOrder === 'asc'
+                                  ? startIndex + displayIdx
+                                  : activeIdea.chapterBeats!.length - 1 - (startIndex + displayIdx);
+
+                                const isChapterExpanded = expandedChapterIndices.includes(originalIdx);
+
+                                return (
+                                  <div key={originalIdx} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors group">
+                                    {/* 章节标题栏 - 始终显示 */}
+                                    <div
+                                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50 transition-colors"
+                                      onClick={() => toggleChapterExpand(originalIdx)}
+                                    >
+                                      <div className="flex items-center flex-1 min-w-0">
+                                        <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0">
+                                          {originalIdx + 1}
+                                        </span>
+                                        <input
+                                          value={beat.chapterTitle}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            const updated = [...activeIdea.chapterBeats!];
+                                            updated[originalIdx] = { ...beat, chapterTitle: e.target.value };
+                                            onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="bg-transparent text-lg font-bold text-gray-200 focus:outline-none flex-1 min-w-0"
+                                          placeholder="章节标题"
+                                        />
+                                      </div>
+
+                                      <div className="flex items-center gap-2 ml-4">
+                                        {/* 操作按钮 */}
+                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          {activeIdea.linkedBookId && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePushSingleBeatToBook(originalIdx);
+                                              }}
+                                              className="text-gray-500 hover:text-green-400 transition-colors p-1"
+                                              title="推送此章节到作品"
+                                            >
+                                              <Upload className="w-4 h-4" />
+                                            </button>
+                                          )}
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handlePushSingleBeatToBook(originalIdx);
-                                            }}
-                                            className="text-gray-500 hover:text-green-400 transition-colors p-1"
-                                            title="推送此章节到作品"
-                                          >
-                                            <Upload className="w-4 h-4" />
-                                          </button>
-                                        )}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updated = activeIdea.chapterBeats!.filter((_, i) => i !== originalIdx);
-                                            onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                          }}
-                                          className="text-gray-600 hover:text-red-400 transition-colors p-1"
-                                          title="删除此章节"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </button>
-                                      </div>
-
-                                      {/* 展开/折叠图标 */}
-                                      <div className="text-gray-500">
-                                        {isChapterExpanded ? (
-                                          <ChevronUp className="w-5 h-5" />
-                                        ) : (
-                                          <ChevronDown className="w-5 h-5" />
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* 章节详细内容 - 折叠/展开 */}
-                                  {isChapterExpanded && (
-                                    <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                          <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
-                                          <textarea
-                                            value={beat.summary}
-                                            onChange={(e) => {
-                                              const updated = [...activeIdea.chapterBeats!];
-                                              updated[originalIdx] = { ...beat, summary: e.target.value };
+                                              const updated = activeIdea.chapterBeats!.filter((_, i) => i !== originalIdx);
                                               onUpdateIdea(activeIdea.id, { chapterBeats: updated });
                                             }}
-                                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-24"
-                                          />
-                                        </div>
-                                        <div className="space-y-4">
-                                          <div className="space-y-2">
-                                            <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
-                                            <input
-                                              value={beat.conflict}
-                                              onChange={(e) => {
-                                                const updated = [...activeIdea.chapterBeats!];
-                                                updated[originalIdx] = { ...beat, conflict: e.target.value };
-                                                onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                              }}
-                                              className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
-                                            />
-                                          </div>
-                                          <div className="space-y-2">
-                                            <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
-                                            <input
-                                              value={beat.keyCharacters.join(', ')}
-                                              onChange={(e) => {
-                                                const updated = [...activeIdea.chapterBeats!];
-                                                updated[originalIdx] = { ...beat, keyCharacters: e.target.value.split(',').map(s => s.trim()) };
-                                                onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                              }}
-                                              className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
-                                              placeholder="逗号分隔角色名"
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Scene Breakdown - 保持现有不变 */}
-                                      {beat.scenes && beat.scenes.length > 0 && (
-                                        <div className="mt-6 border-t border-gray-800 pt-4">
-                                          <button
-                                            onClick={() => toggleBeatExpand(originalIdx)}
-                                            className="w-full h-4 text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-between hover:text-gray-300 transition-colors group"
+                                            className="text-gray-600 hover:text-red-400 transition-colors p-1"
+                                            title="删除此章节"
                                           >
-                                            <div className="flex items-center">
-                                              <List className="w-3 h-3 mr-1.5" />
-                                              场景细化
-                                              <span className="ml-2 text-[10px] lowercase font-normal opacity-50 group-hover:opacity-100 italic">
-                                                ({beat.scenes.length} 个场景)
-                                              </span>
-                                            </div>
-                                            {expandedBeatIndices.includes(originalIdx) ? (
-                                              <ChevronUp className="w-3 h-3" />
-                                            ) : (
-                                              <ChevronDown className="w-3 h-3" />
-                                            )}
+                                            <Trash2 className="w-4 h-4" />
                                           </button>
+                                        </div>
 
-                                          {expandedBeatIndices.includes(originalIdx) && (
-                                            <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                                              <textarea
-                                                value={beat.scenes.map((scene, sIdx) =>
-                                                  `场景${sIdx + 1}：${scene.sceneTitle} (${scene.wordCount})\n${scene.detail}`
-                                                ).join('\n\n')}
-                                                onChange={(e) => {
-                                                  const text = e.target.value;
-                                                  // 解析文本回场景数组
-                                                  const sceneBlocks = text.split(/\n\n+/);
-                                                  const newScenes = sceneBlocks.map(block => {
-                                                    const lines = block.trim().split('\n');
-                                                    if (lines.length === 0) return null;
-
-                                                    const firstLine = lines[0];
-                                                    // 匹配 "场景X：标题 (字数)" 格式
-                                                    const match = firstLine.match(/^场景\d+[：:]\s*(.+?)\s*\((.+?)\)\s*$/);
-
-                                                    if (match) {
-                                                      return {
-                                                        sceneTitle: match[1].trim(),
-                                                        wordCount: match[2].trim(),
-                                                        detail: lines.slice(1).join('\n').trim()
-                                                      };
-                                                    } else {
-                                                      // 如果格式不匹配，尝试简单解析
-                                                      return {
-                                                        sceneTitle: firstLine.replace(/^场景\d+[：:]\s*/, '').trim(),
-                                                        wordCount: '400字',
-                                                        detail: lines.slice(1).join('\n').trim()
-                                                      };
-                                                    }
-                                                  }).filter(s => s !== null) as ChapterScene[];
-
-                                                  const updated = [...activeIdea.chapterBeats!];
-                                                  updated[originalIdx] = { ...beat, scenes: newScenes };
-                                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                                }}
-                                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed font-mono"
-                                                rows={Math.max(8, beat.scenes.length * 3)}
-                                                placeholder="场景1：场景标题 (400字)&#10;场景描述和关键线索...&#10;&#10;场景2：场景标题 (500字)&#10;场景描述..."
-                                              />
-                                              <p className="text-xs text-gray-600 mt-2 italic">
-                                                💡 提示：每个场景用空行分隔，格式为"场景X：标题 (字数)"后跟描述
-                                              </p>
-                                            </div>
+                                        {/* 展开/折叠图标 */}
+                                        <div className="text-gray-500">
+                                          {isChapterExpanded ? (
+                                            <ChevronUp className="w-5 h-5" />
+                                          ) : (
+                                            <ChevronDown className="w-5 h-5" />
                                           )}
                                         </div>
-                                      )}
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
 
-                        {/* 分页控制器 */}
-                        {(() => {
-                          const totalPages = Math.ceil(activeIdea.chapterBeats.length / beatsPerPage);
+                                    {/* 章节详细内容 - 折叠/展开 */}
+                                    {isChapterExpanded && (
+                                      <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                          <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
+                                            <textarea
+                                              value={beat.summary}
+                                              onChange={(e) => {
+                                                const updated = [...activeIdea.chapterBeats!];
+                                                updated[originalIdx] = { ...beat, summary: e.target.value };
+                                                onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                              }}
+                                              className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-24"
+                                            />
+                                          </div>
+                                          <div className="space-y-4">
+                                            <div className="space-y-2">
+                                              <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
+                                              <input
+                                                value={beat.conflict}
+                                                onChange={(e) => {
+                                                  const updated = [...activeIdea.chapterBeats!];
+                                                  updated[originalIdx] = { ...beat, conflict: e.target.value };
+                                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                                }}
+                                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
+                                              />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
+                                              <input
+                                                value={beat.keyCharacters.join(', ')}
+                                                onChange={(e) => {
+                                                  const updated = [...activeIdea.chapterBeats!];
+                                                  updated[originalIdx] = { ...beat, keyCharacters: e.target.value.split(',').map(s => s.trim()) };
+                                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                                }}
+                                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
+                                                placeholder="逗号分隔角色名"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
 
-                          if (totalPages <= 1) return null; // 只有一页时不显示分页
+                                        {/* Scene Breakdown - 保持现有不变 */}
+                                        {beat.scenes && beat.scenes.length > 0 && (
+                                          <div className="mt-6 border-t border-gray-800 pt-4">
+                                            <button
+                                              onClick={() => toggleBeatExpand(originalIdx)}
+                                              className="w-full h-4 text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-between hover:text-gray-300 transition-colors group"
+                                            >
+                                              <div className="flex items-center">
+                                                <List className="w-3 h-3 mr-1.5" />
+                                                场景细化
+                                                <span className="ml-2 text-[10px] lowercase font-normal opacity-50 group-hover:opacity-100 italic">
+                                                  ({beat.scenes.length} 个场景)
+                                                </span>
+                                              </div>
+                                              {expandedBeatIndices.includes(originalIdx) ? (
+                                                <ChevronUp className="w-3 h-3" />
+                                              ) : (
+                                                <ChevronDown className="w-3 h-3" />
+                                              )}
+                                            </button>
 
-                          const renderPageNumbers = () => {
-                            const pages = [];
-                            const maxVisible = 7; // 最多显示7个页码
+                                            {expandedBeatIndices.includes(originalIdx) && (
+                                              <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <textarea
+                                                  value={beat.scenes.map((scene, sIdx) =>
+                                                    `场景${sIdx + 1}：${scene.sceneTitle} (${scene.wordCount})\n${scene.detail}`
+                                                  ).join('\n\n')}
+                                                  onChange={(e) => {
+                                                    const text = e.target.value;
+                                                    // 解析文本回场景数组
+                                                    const sceneBlocks = text.split(/\n\n+/);
+                                                    const newScenes = sceneBlocks.map(block => {
+                                                      const lines = block.trim().split('\n');
+                                                      if (lines.length === 0) return null;
 
-                            if (totalPages <= maxVisible) {
-                              // 总页数少于最大显示数，显示所有页码
-                              for (let i = 1; i <= totalPages; i++) {
-                                pages.push(i);
-                              }
-                            } else {
-                              // 总页数多，显示省略号
-                              if (beatsCurrentPage <= 4) {
-                                // 当前页在前面
-                                for (let i = 1; i <= 5; i++) pages.push(i);
-                                pages.push('...');
-                                pages.push(totalPages);
-                              } else if (beatsCurrentPage >= totalPages - 3) {
-                                // 当前页在后面
-                                pages.push(1);
-                                pages.push('...');
-                                for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+                                                      const firstLine = lines[0];
+                                                      // 匹配 "场景X：标题 (字数)" 格式
+                                                      const match = firstLine.match(/^场景\d+[：:]\s*(.+?)\s*\((.+?)\)\s*$/);
+
+                                                      if (match) {
+                                                        return {
+                                                          sceneTitle: match[1].trim(),
+                                                          wordCount: match[2].trim(),
+                                                          detail: lines.slice(1).join('\n').trim()
+                                                        };
+                                                      } else {
+                                                        // 如果格式不匹配，尝试简单解析
+                                                        return {
+                                                          sceneTitle: firstLine.replace(/^场景\d+[：:]\s*/, '').trim(),
+                                                          wordCount: '400字',
+                                                          detail: lines.slice(1).join('\n').trim()
+                                                        };
+                                                      }
+                                                    }).filter(s => s !== null) as ChapterScene[];
+
+                                                    const updated = [...activeIdea.chapterBeats!];
+                                                    updated[originalIdx] = { ...beat, scenes: newScenes };
+                                                    onUpdateIdea(activeIdea.id, { chapterBeats: updated });
+                                                  }}
+                                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed font-mono"
+                                                  rows={Math.max(8, beat.scenes.length * 3)}
+                                                  placeholder="场景1：场景标题 (400字)&#10;场景描述和关键线索...&#10;&#10;场景2：场景标题 (500字)&#10;场景描述..."
+                                                />
+                                                <p className="text-xs text-gray-600 mt-2 italic">
+                                                  💡 提示：每个场景用空行分隔，格式为"场景X：标题 (字数)"后跟描述
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+
+                          {/* 分页控制器 */}
+                          {(() => {
+                            const totalPages = Math.ceil(activeIdea.chapterBeats.length / beatsPerPage);
+
+                            if (totalPages <= 1) return null; // 只有一页时不显示分页
+
+                            const renderPageNumbers = () => {
+                              const pages = [];
+                              const maxVisible = 7; // 最多显示7个页码
+
+                              if (totalPages <= maxVisible) {
+                                // 总页数少于最大显示数，显示所有页码
+                                for (let i = 1; i <= totalPages; i++) {
+                                  pages.push(i);
+                                }
                               } else {
-                                // 当前页在中间
-                                pages.push(1);
-                                pages.push('...');
-                                for (let i = beatsCurrentPage - 1; i <= beatsCurrentPage + 1; i++) pages.push(i);
-                                pages.push('...');
-                                pages.push(totalPages);
+                                // 总页数多，显示省略号
+                                if (beatsCurrentPage <= 4) {
+                                  // 当前页在前面
+                                  for (let i = 1; i <= 5; i++) pages.push(i);
+                                  pages.push('...');
+                                  pages.push(totalPages);
+                                } else if (beatsCurrentPage >= totalPages - 3) {
+                                  // 当前页在后面
+                                  pages.push(1);
+                                  pages.push('...');
+                                  for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+                                } else {
+                                  // 当前页在中间
+                                  pages.push(1);
+                                  pages.push('...');
+                                  for (let i = beatsCurrentPage - 1; i <= beatsCurrentPage + 1; i++) pages.push(i);
+                                  pages.push('...');
+                                  pages.push(totalPages);
+                                }
                               }
-                            }
 
-                            return pages;
-                          };
+                              return pages;
+                            };
 
-                          return (
-                            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                              <div className="text-xs text-gray-500">
-                                显示 {(beatsCurrentPage - 1) * beatsPerPage + 1} - {Math.min(beatsCurrentPage * beatsPerPage, activeIdea.chapterBeats.length)} / 共 {activeIdea.chapterBeats.length} 条
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {/* 上一页 */}
-                                <button
-                                  onClick={() => setBeatsCurrentPage(prev => Math.max(1, prev - 1))}
-                                  disabled={beatsCurrentPage === 1}
-                                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                                >
-                                  上一页
-                                </button>
-
-                                {/* 页码 */}
-                                <div className="flex items-center gap-1">
-                                  {renderPageNumbers().map((page, idx) => {
-                                    if (page === '...') {
-                                      return (
-                                        <span key={`ellipsis-${idx}`} className="px-2 text-gray-600">
-                                          ...
-                                        </span>
-                                      );
-                                    }
-
-                                    return (
-                                      <button
-                                        key={page}
-                                        onClick={() => setBeatsCurrentPage(page as number)}
-                                        className={`min-w-[32px] h-8 rounded-lg text-xs font-medium transition-colors ${beatsCurrentPage === page
-                                          ? 'bg-indigo-600 text-white'
-                                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
-                                          }`}
-                                      >
-                                        {page}
-                                      </button>
-                                    );
-                                  })}
+                            return (
+                              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+                                <div className="text-xs text-gray-500">
+                                  显示 {(beatsCurrentPage - 1) * beatsPerPage + 1} - {Math.min(beatsCurrentPage * beatsPerPage, activeIdea.chapterBeats.length)} / 共 {activeIdea.chapterBeats.length} 条
                                 </div>
 
-                                {/* 下一页 */}
-                                <button
-                                  onClick={() => setBeatsCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                  disabled={beatsCurrentPage === totalPages}
-                                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                                >
-                                  下一页
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  {/* 上一页 */}
+                                  <button
+                                    onClick={() => setBeatsCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={beatsCurrentPage === 1}
+                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+                                  >
+                                    上一页
+                                  </button>
 
-                                {/* 跳转到页 */}
-                                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
-                                  <span className="text-xs text-gray-500">跳转</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={totalPages}
-                                    value={beatsCurrentPage}
-                                    onChange={(e) => {
-                                      const page = parseInt(e.target.value);
-                                      if (page >= 1 && page <= totalPages) {
-                                        setBeatsCurrentPage(page);
+                                  {/* 页码 */}
+                                  <div className="flex items-center gap-1">
+                                    {renderPageNumbers().map((page, idx) => {
+                                      if (page === '...') {
+                                        return (
+                                          <span key={`ellipsis-${idx}`} className="px-2 text-gray-600">
+                                            ...
+                                          </span>
+                                        );
                                       }
-                                    }}
-                                    className="w-14 bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 text-center focus:outline-none focus:border-indigo-500"
-                                  />
-                                  <span className="text-xs text-gray-500">/ {totalPages}</span>
+
+                                      return (
+                                        <button
+                                          key={page}
+                                          onClick={() => setBeatsCurrentPage(page as number)}
+                                          className={`min-w-[32px] h-8 rounded-lg text-xs font-medium transition-colors ${beatsCurrentPage === page
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                                            }`}
+                                        >
+                                          {page}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* 下一页 */}
+                                  <button
+                                    onClick={() => setBeatsCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={beatsCurrentPage === totalPages}
+                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+                                  >
+                                    下一页
+                                  </button>
+
+                                  {/* 跳转到页 */}
+                                  <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
+                                    <span className="text-xs text-gray-500">跳转</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={totalPages}
+                                      value={beatsCurrentPage}
+                                      onChange={(e) => {
+                                        const page = parseInt(e.target.value);
+                                        if (page >= 1 && page <= totalPages) {
+                                          setBeatsCurrentPage(page);
+                                        }
+                                      }}
+                                      className="w-14 bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 text-center focus:outline-none focus:border-indigo-500"
+                                    />
+                                    <span className="text-xs text-gray-500">/ {totalPages}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })()}
-                      </>
-                    ) : (
-                      <div className="h-96 flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
-                        <FileText className="w-16 h-16 mb-4 opacity-10" />
-                        <p className="text-lg">暂无章节细纲</p>
-                        <p className="text-sm opacity-50 mt-1">点击上方按钮或在左侧输入内容开始拆分</p>
-                      </div>
-                    )}
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <div className="h-96 flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
+                          <FileText className="w-16 h-16 mb-4 opacity-10" />
+                          <p className="text-lg">暂无章节细纲</p>
+                          <p className="text-sm opacity-50 mt-1">点击上方按钮或在左侧输入内容开始拆分</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
