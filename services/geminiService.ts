@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+﻿import { GoogleGenAI } from "@google/genai";
 import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat, BeatsSplit, CharacterProfile } from '../types';
 
 // Default env key
@@ -42,6 +42,71 @@ async function retryWithBackoff<T>(
     throw error;
   }
 }
+
+// ==================== 上下文长度控制工具 ====================
+
+/**
+ * 字段长度限制标准
+ * 基于 token 估算: 中文约 1.5-2 字符 = 1 token
+ */
+const FIELD_LENGTH_LIMITS = {
+  // 基础设定 - 较短
+  spark: 500,        // 核心灵感应该简洁
+  genre: 100,        // 类型很短
+  storyLength: 50,   // 固定值
+
+  // 中等长度
+  core: 1000,        // 故事内核
+  background: 1000,  // 故事背景
+
+  // 较长内容
+  synopsis: 2000,    // 故事概要
+  worldview: 2000,   // 世界观
+
+  // 最长内容
+  outline: 3000,     // 全书大纲
+
+  // 用户输入
+  customContext: 1500, // 自定义文本
+} as const;
+
+/**
+ * 智能截断文本
+ * @param text 要截断的文本
+ * @param maxLength 最大长度
+ * @param fieldName 字段名称(用于提示)
+ * @returns 截断后的文本
+ */
+const truncateText = (text: string | undefined, maxLength: number, fieldName?: string): string => {
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+
+  const truncated = text.slice(0, maxLength);
+  const suffix = fieldName
+    ? `\n\n[${fieldName}内容过长,已截断至${maxLength}字符,原长度${text.length}字符]`
+    : `\n\n[内容过长已截断]`;
+
+  return truncated + suffix;
+};
+
+/**
+ * 优化角色数据以减少 token 使用
+ * @param characters 角色列表
+ * @param maxPerCharacter 每个角色的最大字符数
+ * @returns 优化后的角色文本
+ */
+const optimizeCharacters = (characters: CharacterProfile[] | undefined, maxPerCharacter: number = 200): string => {
+  if (!characters || characters.length === 0) return "暂无具体角色设定";
+
+  return characters.map(c => {
+    const personality = c.personality?.slice(0, 50) || '未设定';
+    const description = c.description?.slice(0, 100) || '暂无';
+    return `- ${c.name} (${c.role}): ${description} [性格: ${personality}]`;
+  }).join('\n');
+};
+
+// ==================== End 上下文长度控制工具 ====================
+
 
 // OpenAI-compatible API call (for DeepSeek, OpenAI, etc.)
 const callOpenAICompatible = async (
@@ -847,23 +912,11 @@ export const generateWorldviewWithContext = async (
   contextText: string,
   customTemplate?: string
 ): Promise<string> => {
-  const prompt = customTemplate
-    ? customTemplate.replace(/{{context}}/g, contextText).replace(/{{input}}/g, contextText)
-    : `
-      基于以下提供的素材和背景信息，设计一个精炼且逻辑自洽的世界观背景。
-      
-      --- 参考素材 ---
-      ${contextText}
-      -------------------
-      
-      要求包含以下内容（请保持简明扼要，避免冗长）：
-      1. 世界背景：简述故事发生的空间设定。
-      2. 力量/技术体系：概括核心逻辑（如修仙等级、科技水平、魔法法则等）。
-      3. 核心冲突源：点出导致故事发生的深层诱因。
-      4. 独特设定：基于提供的素材，提炼出与众不同的世界观特色。
-      
-      请使用结构清晰的 Markdown 格式输出，重点在于核心设定的构建，非核心细节可适当留白。
-    `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建世界观生成提示词');
+  }
+
+  const prompt = customTemplate.replace(/{{context}}/g, contextText);
 
   const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请基于用户提供的素材，构建逻辑自洽且精炼的世界观。务必充分利用提供的所有信息。";
 
@@ -1063,56 +1116,40 @@ export const generateBeatsFromVolumeContent = async (
 
   const { volumeContent, chapterCount, startChapter, referenceContext } = context;
 
-  // 优化角色数据展现，包含更多维度
-  const optimizedCharacters = context.characters?.map(c =>
-    `### ${c.name} (${c.role})\n- 性格: ${c.personality || '暂无'}\n- 简介: ${c.description || '暂无'}\n- 背景: ${c.background || '暂无'}`
-  ).join('\n') || "暂无具体角色设定";
+  // 使用统一的角色优化函数
+  const optimizedCharacters = optimizeCharacters(context.characters);
 
   const contextBlock = `
 --- 故事基础设定 (核心) ---
-【核心灵感】：${context.spark || '未提供'}
-${context.genre ? `【故事类型】：${context.genre}` : ''}
-${context.background ? `【故事背景】：${context.background}` : ''}
+【核心灵感】：${truncateText(context.spark, FIELD_LENGTH_LIMITS.spark, '核心灵感')}
+${context.genre ? `【故事类型】：${truncateText(context.genre, FIELD_LENGTH_LIMITS.genre)}` : ''}
+${context.background ? `【故事背景】：${truncateText(context.background, FIELD_LENGTH_LIMITS.background, '故事背景')}` : ''}
 ${context.storyLength ? `【故事篇幅】：${context.storyLength}` : ''}
-【故事内核】：${context.core || '未提供'}
-【故事概要】：${context.synopsis || '未提供'}
+【故事内核】：${truncateText(context.core, FIELD_LENGTH_LIMITS.core, '故事内核')}
+【故事概要】：${truncateText(context.synopsis, FIELD_LENGTH_LIMITS.synopsis, '故事概要')}
 
 --- 世界观设定 ---
-${context.worldview ? context.worldview.slice(0, 2000) : '暂无详细设定'}
+${truncateText(context.worldview, FIELD_LENGTH_LIMITS.worldview, '世界观')}
 
 --- 核心角色阵容 ---
 ${optimizedCharacters}
 
-${context.outline ? `--- 全书大纲参考 ---\n${context.outline.slice(0, 2000)}\n` : ''}
+${context.outline ? `--- 全书大纲参考 ---\n${truncateText(context.outline, FIELD_LENGTH_LIMITS.outline, '全书大纲')}\n` : ''}
 
 ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceContext}` : ''}
   `.trim();
 
-  if (customTemplate) {
-    promptContent = customTemplate
-      .replace(/{{volumeContent}}/g, volumeContent)
-      .replace(/{{input}}/g, volumeContent)
-      .replace(/{{chapterCount}}/g, String(chapterCount))
-      .replace(/{{startChapter}}/g, String(startChapter))
-      .replace(/{{reference}}/g, referenceContext || '');
-  } else {
-    promptContent = `
-      ${contextBlock}
-
-      --- 待拆解的剧情文本 ---
-      ${volumeContent}
-
-      --- 任务核心指令 (CRITICAL) ---
-      你当前的角色是资深网文架构师。请将上述【待拆解的剧情文本】拆分为 ${chapterCount} 个连续的章节细纲。
-      
-      【强制要求】：
-      1. **设定一致性**：剧情逻辑、力量体系、人物行为模式必须 100% 符合上文提供的【世界观】和【角色阵容】设定，严禁逻辑相悖。
-      2. **承接精准性**：如果存在【前文剧情参考】，请确保第 ${startChapter} 章与前文无缝衔接，人物状态必须连贯。
-      3. **章节细化**：每一章需拆解为 5-6 个具体的对话场景，并规划合理的字数。
-      4. **严禁合并**：必须返回恰好 ${chapterCount} 个章节（从第 ${startChapter} 章到第 ${startChapter + chapterCount - 1} 章）。
-      5. **拒绝幻觉**：不要引入与已有世界观冲突的奇幻/科幻元素，不要随意更改角色性格。
-    `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建细纲拆解提示词');
   }
+
+  promptContent = customTemplate
+    .replace(/{{context}}/g, contextBlock)
+    .replace(/{{volumeContent}}/g, volumeContent)
+    .replace(/{{input}}/g, volumeContent)
+    .replace(/{{chapterCount}}/g, String(chapterCount))
+    .replace(/{{startChapter}}/g, String(startChapter))
+    .replace(/{{reference}}/g, referenceContext || '');
 
   const finalPrompt = `
     ${promptContent}
@@ -1223,49 +1260,27 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
 
 export const generateCharactersFromIdea = async (
   modelConfig: ModelConfig,
-  context: {
-    spark: string;
-    core?: string;
-    synopsis?: string;
-    worldview?: string;
-    requirements?: {
-      protagonist: number;
-      antagonist: number;
-      supporting: number;
-    };
+  contextText: string,
+  requirements?: {
+    protagonist: number;
+    antagonist: number;
+    supporting: number;
   },
   customTemplate?: string
 ): Promise<Omit<CharacterProfile, 'id'>[]> => {
   let promptContent = '';
 
-  const { requirements } = context;
   const countReq = requirements
     ? `请严格生成以下数量的角色：主角 ${requirements.protagonist} 人，反派 ${requirements.antagonist} 人，重要配角 ${requirements.supporting} 人。`
     : "请基于以上故事设定，设计 3-5 个核心角色（包括主角和关键配角/反派）。";
 
-  if (customTemplate) {
-    promptContent = customTemplate
-      .replace(/{{spark}}/g, context.spark)
-      .replace(/{{core}}/g, context.core || '')
-      .replace(/{{synopsis}}/g, context.synopsis || '')
-      .replace(/{{worldview}}/g, context.worldview || '')
-      .replace(/{{input}}/g, context.synopsis || context.spark);
-  } else {
-    promptContent = `
-      【灵感/脑洞】：${context.spark}
-      ${context.core ? `【故事内核】：${context.core}` : ''}
-      ${context.synopsis ? `【故事概要】：${context.synopsis}` : ''}
-      ${context.worldview ? `【世界观设定】：${context.worldview}` : ''}
-
-            ${countReq}
-            
-            要求：
-            1. 角色性格要鲜明，有独特的辨识度。
-            2. 角色背景要与世界观深度结合。
-            3. 角色之间要有充满张力的关系。
-            4. 请精简输出，【背景故事】和【性格描述】请严格控制在 100 字以内，避免过长导致内容截断。
-          `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建人物生成提示词');
   }
+
+  promptContent = customTemplate
+    .replace(/{{context}}/g, contextText)
+    .replace(/{{requirements}}/g, countReq);
 
   const finalPrompt = `
           ${promptContent}
@@ -1355,88 +1370,14 @@ export const generateCharactersFromIdea = async (
 
 export const generateCompleteOutline = async (
   modelConfig: ModelConfig,
-  data: {
-    spark: string;
-    core?: string;
-    synopsis?: string;
-    storyline?: string;
-    worldview?: string;
-    characters?: CharacterProfile[];
-    storyLength?: string;
-    genre?: string;
-    background?: string;
-  },
+  contextText: string,
   customTemplate?: string
 ): Promise<string> => {
-  // 1. Optimize Character Data (Token Reduction Strategy)
-  const optimizedCharacters = data.characters?.map(c =>
-    `- ${c.name} (${c.role}): ${c.description} [性格核心: ${c.personality?.slice(0, 50) || '未设定'}]`
-  ).join('\n') || "暂无具体角色设定";
-
-  // 2. Construct the Context
-  let finalPrompt = '';
-
-  const contextBlock = `
-          【核心灵感】：${data.spark}
-          ${data.genre ? `【故事类型】：${data.genre}` : ''}
-          ${data.storyLength ? `【故事篇幅】：${data.storyLength}` : ''}
-          ${data.background ? `【故事背景】：${data.background}` : ''}
-          ${data.core ? `【故事内核】：${data.core}` : ''}
-          ${data.synopsis ? `【故事概要】：${data.synopsis}` : ''}
-          
-          【世界观规则】：
-          ${data.worldview ? data.worldview.slice(0, 1000) + (data.worldview.length > 1000 ? '...(略)' : '') : '暂无详细设定'}
-          
-          【核心角色阵容】：
-          ${optimizedCharacters}
-          
-          ${data.storyline ? `【参考故事线】：\n${data.storyline}` : ''}
-            `.trim();
-
-  if (customTemplate) {
-    finalPrompt = customTemplate
-      .replace(/{{context}}/g, contextBlock)
-      .replace(/{{spark}}/g, data.spark)
-      .replace(/{{storyline}}/g, data.storyline || '')
-      .replace(/{{worldview}}/g, data.worldview || '')
-      .replace(/{{characters}}/g, optimizedCharacters);
-  } else {
-    finalPrompt = `
-                ${contextBlock}
-          
-                --- 任务指令 ---
-                请综合以上素材，创作一份详尽的**全书大纲**。
-                
-                **输出格式要求（必须严格遵守）**：
-                
-                # 全书大纲
-                
-                ## 一、故事主线
-                （在此处用精炼的语言概括贯穿全书的核心剧情线索，约300-500字。）
-                
-                ## 二、分卷细纲
-                
-                ### 第一卷：[卷名]
-                **主要内容**：
-                （详细描述本卷的主线剧情发展，核心冲突与高潮。）
-                **支线内容**：
-                （描述本卷并行的支线剧情，如配角成长、感情线、隐藏伏笔等。）
-                
-                ### 第二卷：[卷名]
-                **主要内容**：...
-                **支线内容**：...
-                
-                （后续分卷以此类推...）
-                
-                **内容要求**：
-                1. **深度融合**：剧情必须体现【角色】的性格特征和【世界观】的独特规则。
-                2. **结构严谨**：采用分卷结构，确保每一卷都有明确的起承转合。
-                3. **主次分明**：主要内容要紧扣核心冲突，支线内容要丰富世界观和人物关系。
-                
-                请以 Markdown 格式输出。
-              `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建大纲生成提示词');
   }
 
+  const finalPrompt = customTemplate.replace(/{{context}}/g, contextText);
   const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
 
   try {
@@ -1468,3 +1409,4 @@ export const generateCompleteOutline = async (
     throw new Error(`生成大纲失败: ${(error as Error).message}`);
   }
 };
+

@@ -99,17 +99,17 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // 世界观生成内容选择器状态
   const [showWorldviewContextSelector, setShowWorldviewContextSelector] = useState(false);
-  const [selectedWorldviewFields, setSelectedWorldviewFields] = useState<string[]>(['spark', 'core', 'synopsis']);
+  const [selectedWorldviewFields, setSelectedWorldviewFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length']);
   const [customWorldviewContext, setCustomWorldviewContext] = useState('');
 
   // 人物小传生成内容选择器状态
   const [showCharacterContextSelector, setShowCharacterContextSelector] = useState(false);
-  const [selectedCharacterFields, setSelectedCharacterFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview']);
+  const [selectedCharacterFields, setSelectedCharacterFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview']);
   const [customCharacterContext, setCustomCharacterContext] = useState('');
 
   // 大纲生成内容选择器状态
   const [showOutlineContextSelector, setShowOutlineContextSelector] = useState(false);
-  const [selectedOutlineFields, setSelectedOutlineFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters']);
+  const [selectedOutlineFields, setSelectedOutlineFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters']);
   const [customOutlineContext, setCustomOutlineContext] = useState('');
 
   // 分卷生成内容选择器状态
@@ -119,7 +119,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // 细纲生成内容选择器状态
   const [showBeatsContextSelector, setShowBeatsContextSelector] = useState(false);
-  const [selectedBeatsFields, setSelectedBeatsFields] = useState<string[]>(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline']);
+  const [selectedBeatsFields, setSelectedBeatsFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline']);
   const [customBeatsContext, setCustomBeatsContext] = useState('');
 
   const toggleHistoryExpand = (id: string) => {
@@ -155,15 +155,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   }, [ideas, activeIdeaId]);
 
   // Selected Prompts State
-  const [sparkPromptId, setSparkPromptId] = useState<string>('default');
-  const [corePromptId, setCorePromptId] = useState<string>('default');
-  const [storyPromptId, setStoryPromptId] = useState<string>('default'); // Storyline -> Outline
-  const [worldPromptId, setWorldPromptId] = useState<string>('default'); // For world generation
-  const [worldviewPromptId, setWorldviewPromptId] = useState<string>('default'); // For detailed worldview
-  const [outlinePromptId, setOutlinePromptId] = useState<string>('default'); // Used for re-generating Outline
-  const [volumePromptId, setVolumePromptId] = useState<string>('default');
-  const [beatsPromptId, setBeatsPromptId] = useState<string>('default');
-  const [characterPromptId, setCharacterPromptId] = useState<string>('default');
+  const [sparkPromptId, setSparkPromptId] = useState<string>('');
+  const [corePromptId, setCorePromptId] = useState<string>('');
+  const [storyPromptId, setStoryPromptId] = useState<string>(''); // Storyline -> Outline
+  const [worldPromptId, setWorldPromptId] = useState<string>(''); // For world generation
+  const [worldviewPromptId, setWorldviewPromptId] = useState<string>(''); // For detailed worldview
+  const [outlinePromptId, setOutlinePromptId] = useState<string>(''); // Used for re-generating Outline
+  const [volumePromptId, setVolumePromptId] = useState<string>('');
+  const [beatsPromptId, setBeatsPromptId] = useState<string>('');
+  const [characterPromptId, setCharacterPromptId] = useState<string>('');
 
   const [activeVolumeId, setActiveVolumeId] = useState<string | null>(null);
 
@@ -264,9 +264,20 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   const handleGenerateCoreAndSynopsis = async () => {
     if (!activeIdea || isGenerating) return;
+
+    // 验证是否选择了提示词
+    if (!corePromptId) {
+      alert('请先选择提示词！\n\n请在「指令工程」中创建提示词，然后在生成按钮旁的下拉菜单中选择。');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      const customTemplate = corePromptId !== 'default' ? prompts.find(p => p.id === corePromptId)?.template : undefined;
+      const customTemplate = prompts.find(p => p.id === corePromptId)?.template;
+      if (!customTemplate) {
+        throw new Error('未找到选中的提示词，请重新选择');
+      }
+
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.spark };
@@ -305,9 +316,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   const handleGenerateDetailedBackground = async () => {
     if (!activeIdea || isGenerating) return;
+
+    // 验证是否选择了提示词
+    if (!worldviewPromptId) {
+      alert('请先选择提示词！\n\n请在「指令工程」中创建提示词，然后在生成按钮旁的下拉菜单中选择。');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      const customTemplate = worldviewPromptId !== 'default' ? prompts.find(p => p.id === worldviewPromptId)?.template : undefined;
+      const customTemplate = prompts.find(p => p.id === worldviewPromptId)?.template;
+      if (!customTemplate) {
+        throw new Error('未找到选中的提示词，请重新选择');
+      }
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
@@ -372,49 +393,58 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   const handleGenerateCharacters = async () => {
     if (!activeIdea || isGenerating) return;
+
+    // 验证是否选择了提示词
+    if (!characterPromptId) {
+      alert('请先选择提示词！\n\n请在「指令工程」中创建提示词，然后在生成按钮旁的下拉菜单中选择。');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      const customTemplate = characterPromptId !== 'default' ? prompts.find(p => p.id === characterPromptId)?.template : undefined;
+      const customTemplate = prompts.find(p => p.id === characterPromptId)?.template;
+      if (!customTemplate) {
+        throw new Error('未找到选中的提示词，请重新选择');
+      }
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.character };
 
-      // 动态构建上下文：根据用户选择的字段
-      const context: any = {
-        requirements: charGenReqs
-      };
+      // 构建上下文文本：根据用户选择的字段组合内容（与世界观逻辑一致）
+      const contextParts: string[] = [];
 
       // 字段映射
-      const fieldMap: Record<string, { key: string; value: any }> = {
-        spark: { key: 'spark', value: activeIdea.spark },
-        core: { key: 'core', value: activeIdea.storyCore },
-        synopsis: { key: 'synopsis', value: activeIdea.storySynopsis },
-        genre: { key: 'genre', value: activeIdea.storyGenre },
-        background: { key: 'background', value: activeIdea.storyBackground },
-        length: { key: 'storyLength', value: activeIdea.storyLength },
-        worldview: { key: 'worldview', value: activeIdea.worldview },
+      const fieldMap: Record<string, { label: string; value: string }> = {
+        core: { label: '故事内核', value: activeIdea.storyCore || '' },
+        synopsis: { label: '故事概要', value: activeIdea.storySynopsis || '' },
+        genre: { label: '故事类型', value: activeIdea.storyGenre || '' },
+        background: { label: '故事背景', value: activeIdea.storyBackground || '' },
+        length: { label: '故事篇幅', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
+        worldview: { label: '世界观设定', value: activeIdea.worldview || '' },
       };
 
-      // 添加选中的字段到context
+      // 添加选中的字段
       selectedCharacterFields.forEach(fieldKey => {
         const field = fieldMap[fieldKey];
         if (field && field.value) {
-          context[field.key] = field.value;
+          contextParts.push(`【${field.label}】\n${field.value}`);
         }
       });
 
-      // 如果有自定义文本，附加到worldview或作为独立字段
+      // 添加自定义文本
       if (customCharacterContext.trim()) {
-        if (context.worldview) {
-          context.worldview += `\n\n【补充素材】\n${customCharacterContext.trim()}`;
-        } else {
-          context.worldview = `【补充素材】\n${customCharacterContext.trim()}`;
-        }
+        contextParts.push(`【自定义素材】\n${customCharacterContext.trim()}`);
       }
 
-      // 允许用户自由选择所有字段,不强制要求 spark
+      if (contextParts.length === 0 && !customCharacterContext.trim()) {
+        alert('请至少选择一个内容字段或输入自定义素材');
+        setIsGenerating(false);
+        return;
+      }
 
-      const result = await generateCharactersFromIdea(tempConfig, context, customTemplate);
+      const contextText = contextParts.join('\n\n');
+
+      const result = await generateCharactersFromIdea(tempConfig, contextText, charGenReqs, customTemplate);
 
       const newCharacters: CharacterProfile[] = result.map((c, idx) => ({
         ...c,
@@ -480,49 +510,62 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   const handleGenerateCompleteOutline = async () => {
     if (!activeIdea || isGenerating) return;
+
+    // 验证是否选择了提示词
+    if (!outlinePromptId) {
+      alert('请先选择提示词！\n\n请在「指令工程」中创建提示词，然后在生成按钮旁的下拉菜单中选择。');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      const customTemplate = outlinePromptId !== 'default' ? prompts.find(p => p.id === outlinePromptId)?.template : undefined;
+      const customTemplate = prompts.find(p => p.id === outlinePromptId)?.template;
+      if (!customTemplate) {
+        throw new Error('未找到选中的提示词，请重新选择');
+      }
       const defaultModel = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!defaultModel) throw new Error('没有配置模型');
       const tempConfig = { ...defaultModel, modelName: stageModels.story };
 
-      // 动态构建上下文
-      const context: any = {};
-      const fieldMap: Record<string, { key: string; value: any }> = {
-        spark: { key: 'spark', value: activeIdea.spark },
-        core: { key: 'core', value: activeIdea.storyCore },
-        synopsis: { key: 'synopsis', value: activeIdea.storySynopsis },
-        genre: { key: 'genre', value: activeIdea.storyGenre },
-        background: { key: 'background', value: activeIdea.storyBackground },
-        length: { key: 'storyLength', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
-        worldview: { key: 'worldview', value: activeIdea.worldview },
-        characters: { key: 'characters', value: activeIdea.characters },
-        storyline: { key: 'storyline', value: activeIdea.storyline },
+      // 构建上下文文本：根据用户选择的字段组合内容（与世界观逻辑一致）
+      const contextParts: string[] = [];
+
+      // 字段映射
+      const fieldMap: Record<string, { label: string; value: string }> = {
+        core: { label: '故事内核', value: activeIdea.storyCore || '' },
+        synopsis: { label: '故事概要', value: activeIdea.storySynopsis || '' },
+        genre: { label: '故事类型', value: activeIdea.storyGenre || '' },
+        background: { label: '故事背景', value: activeIdea.storyBackground || '' },
+        length: { label: '故事篇幅', value: activeIdea.storyLength === 'short' ? '短篇故事' : '长篇小说' },
+        worldview: { label: '世界观设定', value: activeIdea.worldview || '' },
+        characters: { label: '人物小传', value: activeIdea.characters?.map(c => `${c.name}(${c.role}): ${c.description}`).join('\n') || '' },
       };
 
+      // 添加选中的字段
       selectedOutlineFields.forEach(fieldKey => {
         const field = fieldMap[fieldKey];
         if (field && field.value) {
-          context[field.key] = field.value;
+          contextParts.push(`【${field.label}】\n${field.value}`);
         }
       });
 
-      // 处理自定义文本
+      // 添加自定义文本
       if (customOutlineContext.trim()) {
-        if (context.worldview) {
-          context.worldview += `\n\n【补充素材】\n${customOutlineContext.trim()}`;
-        } else {
-          context.worldview = `【补充素材】\n${customOutlineContext.trim()}`;
-        }
+        contextParts.push(`【自定义素材】\n${customOutlineContext.trim()}`);
       }
 
-      // 允许用户自由选择所有字段,不强制要求 spark
+      if (contextParts.length === 0 && !customOutlineContext.trim()) {
+        alert('请至少选择一个内容字段或输入自定义素材');
+        setIsGenerating(false);
+        return;
+      }
+
+      const contextText = contextParts.join('\n\n');
 
       // UPGRADE: Use generateCompleteOutline to fuse all contexts
       const result = await generateCompleteOutline(
         tempConfig,
-        context,
+        contextText,
         customTemplate
       );
 
@@ -715,10 +758,20 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
     setIsGenerating(true);
     try {
+      // 验证是否选择了提示词
+      if (!beatsPromptId) {
+        alert('请先选择提示词！\n\n请在「指令工程」中创建提示词，然后在生成按钮旁的下拉菜单中选择。');
+        setIsGenerating(false);
+        return;
+      }
+
       const modelConfig = settings.models?.find(m => m.id === settings.defaultModelId) || settings.models?.[0];
       if (!modelConfig) throw new Error('没有配置模型');
 
-      const customTemplate = beatsPromptId !== 'default' ? beatsPrompts.find(p => p.id === beatsPromptId)?.template : undefined;
+      const customTemplate = beatsPrompts.find(p => p.id === beatsPromptId)?.template;
+      if (!customTemplate) {
+        throw new Error('未找到选中的提示词，请重新选择');
+      }
 
       // Use the user-configurable start chapter
       const startChapter = startChapterNum;
@@ -1073,7 +1126,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     const [showPromptDetail, setShowPromptDetail] = useState(false);
 
     const handleSetDefault = () => {
-      if (!storageKey || value === 'default') return;
+      if (!storageKey || !value) return;
       localStorage.setItem(storageKey, value);
       alert('已设为默认提示词！下次打开时将自动使用此提示词。');
     };
@@ -1089,7 +1142,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
               className="appearance-none bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded py-2 pl-8 pr-8 w-32 focus:outline-none focus:border-purple-500 hover:border-gray-600 transition-colors truncate cursor-pointer"
               title={`选择${label}模板`}
             >
-              <option value="default">默认模板</option>
+              <option value="" disabled>请选择提示词</option>
               {filteredPrompts.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -1100,7 +1153,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
           </div>
 
           {/* Eye Icon to View Prompt */}
-          {value !== 'default' && activePrompt && (
+          {value && activePrompt && (
             <button
               onClick={() => setShowPromptDetail(true)}
               className="p-1.5 text-gray-500 hover:text-purple-400 hover:bg-gray-700 rounded transition-colors shrink-0"
@@ -1111,7 +1164,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
           )}
 
           {/* Set Default Button */}
-          {storageKey && value !== 'default' && (
+          {storageKey && value && (
             <button
               onClick={handleSetDefault}
               className="p-1.5 text-gray-500 hover:text-green-400 hover:bg-gray-700 rounded transition-colors shrink-0"
@@ -1485,10 +1538,25 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                         {/* 字段选择器 */}
                         <div className="space-y-3">
-                          <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                            <span className="text-[10px] text-gray-500">
+                              预计引用: <span className="text-gray-400 font-mono">
+                                {(() => {
+                                  const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                  let total = customWorldviewContext.length;
+                                  selectedWorldviewFields.forEach(k => {
+                                    const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                    total += typeof val === 'string' ? val.length : 0;
+                                  });
+                                  return total;
+                                })()}
+                              </span> 字
+                            </span>
+                          </div>
                           <div className="space-y-2">
                             {[
-                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+
                               { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
                               { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
                               { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
@@ -1516,9 +1584,26 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               >
                                 <div className="flex items-center justify-between">
                                   <span>{field.label}</span>
-                                  {selectedWorldviewFields.includes(field.key) && (
-                                    <Check className="w-4 h-4 text-indigo-400" />
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {field.available && (
+                                      <span className={`text-[10px] ${(() => {
+                                        const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                        const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                        const len = val?.length || 0;
+                                        return len > 1000 ? 'text-yellow-500' : 'text-gray-500';
+                                      })()
+                                        }`}>
+                                        {(() => {
+                                          const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                          const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                          return val?.length || 0;
+                                        })()}字
+                                      </span>
+                                    )}
+                                    {selectedWorldviewFields.includes(field.key) && (
+                                      <Check className="w-4 h-4 text-indigo-400" />
+                                    )}
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -1536,10 +1621,12 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           />
                         </div>
 
+
+
                         {/* 快捷操作 */}
                         <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
                           <button
-                            onClick={() => setSelectedWorldviewFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
+                            onClick={() => setSelectedWorldviewFields(['core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
                             className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
                           >
                             全选
@@ -1669,10 +1756,25 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                         {/* 字段选择器 */}
                         <div className="space-y-3">
-                          <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                            <span className="text-[10px] text-gray-500">
+                              预计引用: <span className="text-gray-400 font-mono">
+                                {(() => {
+                                  const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                  let total = customCharacterContext.length;
+                                  selectedCharacterFields.forEach(k => {
+                                    const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                    total += typeof val === 'string' ? val.length : 0;
+                                  });
+                                  return total;
+                                })()}
+                              </span> 字
+                            </span>
+                          </div>
                           <div className="space-y-2">
                             {[
-                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+
                               { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
                               { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
                               { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
@@ -1683,26 +1785,41 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               <button
                                 key={field.key}
                                 onClick={() => {
-                                  if (!field.available) return;
                                   setSelectedCharacterFields(prev =>
                                     prev.includes(field.key)
                                       ? prev.filter(k => k !== field.key)
                                       : [...prev, field.key]
                                   );
                                 }}
-                                disabled={!field.available}
                                 className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${selectedCharacterFields.includes(field.key)
                                   ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
                                   : field.available
                                     ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
-                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 hover:border-gray-700'
                                   }`}
                               >
                                 <div className="flex items-center justify-between">
                                   <span>{field.label}</span>
-                                  {selectedCharacterFields.includes(field.key) && (
-                                    <Check className="w-4 h-4 text-indigo-400" />
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {field.available && (
+                                      <span className={`text-[10px] ${(() => {
+                                        const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                        const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                        const len = val?.length || 0;
+                                        return len > 1500 ? 'text-yellow-500' : 'text-gray-500';
+                                      })()
+                                        }`}>
+                                        {(() => {
+                                          const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                          const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                          return val?.length || 0;
+                                        })()}字
+                                      </span>
+                                    )}
+                                    {selectedCharacterFields.includes(field.key) && (
+                                      <Check className="w-4 h-4 text-indigo-400" />
+                                    )}
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -1720,10 +1837,12 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           />
                         </div>
 
+
+
                         {/* 快捷操作 */}
                         <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
                           <button
-                            onClick={() => setSelectedCharacterFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
+                            onClick={() => setSelectedCharacterFields(['core', 'synopsis', 'genre', 'background', 'length', 'worldview'])}
                             className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
                           >
                             全选
@@ -2005,10 +2124,42 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                           {/* 字段选择器 */}
                           <div className="space-y-3">
-                            <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-gray-500 uppercase">已有字段</label>
+                              <span className="text-[10px] text-gray-500">
+                                预计引用: <span className={`${(() => {
+                                  const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                  let total = customOutlineContext.length;
+                                  selectedOutlineFields.forEach(k => {
+                                    if (k === 'characters') {
+                                      total += activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                    } else {
+                                      const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                      total += typeof val === 'string' ? val.length : 0;
+                                    }
+                                  });
+                                  return total > 5000 ? 'text-yellow-500' : 'text-gray-400';
+                                })()
+                                  } font-mono`}>
+                                  {(() => {
+                                    const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                    let total = customOutlineContext.length;
+                                    selectedOutlineFields.forEach(k => {
+                                      if (k === 'characters') {
+                                        total += activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                      } else {
+                                        const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                        total += typeof val === 'string' ? val.length : 0;
+                                      }
+                                    });
+                                    return total;
+                                  })()}
+                                </span> 字
+                              </span>
+                            </div>
                             <div className="space-y-2">
                               {[
-                                { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+
                                 { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
                                 { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
                                 { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
@@ -2021,26 +2172,49 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                                 <button
                                   key={field.key}
                                   onClick={() => {
-                                    if (!field.available) return;
                                     setSelectedOutlineFields(prev =>
                                       prev.includes(field.key)
                                         ? prev.filter(k => k !== field.key)
                                         : [...prev, field.key]
                                     );
                                   }}
-                                  disabled={!field.available}
                                   className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${selectedOutlineFields.includes(field.key)
                                     ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
                                     : field.available
                                       ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
-                                      : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                      : 'bg-gray-900 text-gray-600 border-2 border-gray-800 hover:border-gray-700'
                                     }`}
                                 >
                                   <div className="flex items-center justify-between">
                                     <span>{field.label}</span>
-                                    {selectedOutlineFields.includes(field.key) && (
-                                      <Check className="w-4 h-4 text-indigo-400" />
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {field.available && (
+                                        <span className={`text-[10px] ${(() => {
+                                          const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                          let len = 0;
+                                          if (field.key === 'characters') {
+                                            len = activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                          } else {
+                                            const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                            len = typeof val === 'string' ? val.length : 0;
+                                          }
+                                          return len > 2000 ? 'text-yellow-500' : 'text-gray-500';
+                                        })()
+                                          }`}>
+                                          {(() => {
+                                            const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                            if (field.key === 'characters') {
+                                              return activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                            }
+                                            const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                            return typeof val === 'string' ? val.length : 0;
+                                          })()}字
+                                        </span>
+                                      )}
+                                      {selectedOutlineFields.includes(field.key) && (
+                                        <Check className="w-4 h-4 text-indigo-400" />
+                                      )}
+                                    </div>
                                   </div>
                                 </button>
                               ))}
@@ -2058,10 +2232,26 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                             />
                           </div>
 
+                          {(() => {
+                            let total = customOutlineContext.length;
+                            selectedOutlineFields.forEach(k => {
+                              if (k === 'length') return;
+                              const val = k === 'characters' ? activeIdea.characters?.map(c => c.name).join('') || '' : (activeIdea as any)[k === 'core' ? 'storyCore' : k === 'synopsis' ? 'storySynopsis' : k === 'background' ? 'storyBackground' : k] || '';
+                              total += val.length;
+                            });
+                            return total > 5000 ? (
+                              <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                                <p className="text-[9px] text-yellow-600 leading-tight italic text-center">
+                                  ⚠️ 素材较多,AI 可能会自动忽略/简化部分细节。
+                                </p>
+                              </div>
+                            ) : null;
+                          })()}
+
                           {/* 快捷操作 */}
                           <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
                             <button
-                              onClick={() => setSelectedOutlineFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters'])}
+                              onClick={() => setSelectedOutlineFields(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters'])}
                               className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition-colors"
                             >
                               全选
@@ -2265,10 +2455,42 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
                         {/* 字段选择器 */}
                         <div className="space-y-3">
-                          <label className="text-xs font-bold text-gray-500 uppercase">参考设定</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-gray-500 uppercase">参考设定</label>
+                            <span className="text-[10px] text-gray-500">
+                              预计引用: <span className={`${(() => {
+                                const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                let total = (customBeatsContext?.length || 0) + (volumeContent?.length || 0);
+                                selectedBeatsFields.forEach(k => {
+                                  if (k === 'characters') {
+                                    total += activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                  } else {
+                                    const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                    total += typeof val === 'string' ? val.length : 0;
+                                  }
+                                });
+                                return total > 8000 ? 'text-yellow-500' : 'text-gray-400';
+                              })()
+                                } font-mono`}>
+                                {(() => {
+                                  const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                  let total = (customBeatsContext?.length || 0) + (volumeContent?.length || 0);
+                                  selectedBeatsFields.forEach(k => {
+                                    if (k === 'characters') {
+                                      total += activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                    } else {
+                                      const val = (activeIdea as any)[keyMap[k] || k] || '';
+                                      total += typeof val === 'string' ? val.length : 0;
+                                    }
+                                  });
+                                  return total;
+                                })()}
+                              </span> 字
+                            </span>
+                          </div>
                           <div className="grid grid-cols-1 gap-2">
                             {[
-                              { key: 'spark', label: '核心灵感', available: !!activeIdea.spark },
+
                               { key: 'core', label: '故事内核', available: !!activeIdea.storyCore },
                               { key: 'synopsis', label: '故事概要', available: !!activeIdea.storySynopsis },
                               { key: 'genre', label: '故事类型', available: !!activeIdea.storyGenre },
@@ -2282,26 +2504,49 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               <button
                                 key={field.key}
                                 onClick={() => {
-                                  if (!field.available) return;
                                   setSelectedBeatsFields(prev =>
                                     prev.includes(field.key)
                                       ? prev.filter(k => k !== field.key)
                                       : [...prev, field.key]
                                   );
                                 }}
-                                disabled={!field.available}
                                 className={`w-full px-4 py-2 rounded-lg text-xs font-medium transition-all text-left ${selectedBeatsFields.includes(field.key)
                                   ? 'bg-indigo-600/20 text-indigo-300 border-2 border-indigo-500/50'
                                   : field.available
                                     ? 'bg-gray-800 text-gray-400 border-2 border-gray-700 hover:border-gray-600'
-                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 cursor-not-allowed opacity-50'
+                                    : 'bg-gray-900 text-gray-600 border-2 border-gray-800 hover:border-gray-700'
                                   }`}
                               >
                                 <div className="flex items-center justify-between">
                                   <span>{field.label}</span>
-                                  {selectedBeatsFields.includes(field.key) && (
-                                    <Check className="w-4 h-4 text-indigo-400" />
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {field.available && (
+                                      <span className={`text-[10px] ${(() => {
+                                        const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                        let len = 0;
+                                        if (field.key === 'characters') {
+                                          len = activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                        } else {
+                                          const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                          len = typeof val === 'string' ? val.length : 0;
+                                        }
+                                        return len > 2000 ? 'text-yellow-500' : 'text-gray-500';
+                                      })()
+                                        }`}>
+                                        {(() => {
+                                          const keyMap: any = { core: 'storyCore', synopsis: 'storySynopsis', genre: 'storyGenre', background: 'storyBackground', length: 'storyLength' };
+                                          if (field.key === 'characters') {
+                                            return activeIdea.characters?.reduce((acc, c) => acc + (c.name.length + (c.identity?.length || 0) + (c.description?.length || 0)), 0) || 0;
+                                          }
+                                          const val = (activeIdea as any)[keyMap[field.key] || field.key];
+                                          return typeof val === 'string' ? val.length : 0;
+                                        })()}字
+                                      </span>
+                                    )}
+                                    {selectedBeatsFields.includes(field.key) && (
+                                      <Check className="w-4 h-4 text-indigo-400" />
+                                    )}
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -2319,10 +2564,24 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                           />
                         </div>
 
+                        {(() => {
+                          let total = (customBeatsContext?.length || 0) + (volumeContent?.length || 0);
+                          selectedBeatsFields.forEach(k => {
+                            if (k === 'length') return;
+                            const val = k === 'characters' ? activeIdea.characters?.map(c => c.name).join('') || '' : k === 'outline' ? activeIdea.outline || '' : (activeIdea as any)[k === 'core' ? 'storyCore' : k === 'synopsis' ? 'storySynopsis' : k === 'background' ? 'storyBackground' : k] || '';
+                            total += val.length;
+                          });
+                          return total > 8000 ? (
+                            <p className="text-[9px] text-yellow-600 leading-tight italic px-4 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-center">
+                              ⚠️ 素材极多,可能会稀释当前章节的描写精度。
+                            </p>
+                          ) : null;
+                        })()}
+
                         {/* 快捷操作 */}
                         <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
                           <button
-                            onClick={() => setSelectedBeatsFields(['spark', 'core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline'])}
+                            onClick={() => setSelectedBeatsFields(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline'])}
                             className="flex-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[10px] font-medium transition-colors"
                           >
                             全选
