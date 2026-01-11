@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { IdeaProject, ChapterBeat, ChapterScene, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
+import { IdeaProject, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
 import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X, Eye, Star, ArrowUp, ArrowDown } from 'lucide-react';
 import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateWorldviewWithContext, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
-
-const handleGenerateBeats = async () => {
-  // ... (existing code)
-};
 
 
 interface IdeaLabProps {
@@ -94,33 +90,108 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // 细纲拆解预览弹窗状态
   const [showBeatsPreview, setShowBeatsPreview] = useState(false);
-  const [pendingBeats, setPendingBeats] = useState<ChapterBeat[] | null>(null);
+  const [pendingBeats, setPendingBeats] = useState<string[] | null>(null);
   const [lastGenerationParams, setLastGenerationParams] = useState<any>(null);
 
   // 世界观生成内容选择器状态
   const [showWorldviewContextSelector, setShowWorldviewContextSelector] = useState(false);
-  const [selectedWorldviewFields, setSelectedWorldviewFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length']);
-  const [customWorldviewContext, setCustomWorldviewContext] = useState('');
+  const [selectedWorldviewFields, setSelectedWorldviewFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('idealab_worldview_selected_fields');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load worldview fields:', e);
+    }
+    return ['core', 'synopsis', 'genre', 'background', 'length'];
+  });
+  const [customWorldviewContext, setCustomWorldviewContext] = useState(() => {
+    try {
+      return localStorage.getItem('idealab_worldview_custom_context') || '';
+    } catch (e) {
+      console.error('Failed to load worldview custom context:', e);
+      return '';
+    }
+  });
 
   // 人物小传生成内容选择器状态
   const [showCharacterContextSelector, setShowCharacterContextSelector] = useState(false);
-  const [selectedCharacterFields, setSelectedCharacterFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview']);
-  const [customCharacterContext, setCustomCharacterContext] = useState('');
+  const [selectedCharacterFields, setSelectedCharacterFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('idealab_character_selected_fields');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load character fields:', e);
+    }
+    return ['core', 'synopsis', 'genre', 'background', 'length', 'worldview'];
+  });
+  const [customCharacterContext, setCustomCharacterContext] = useState(() => {
+    try {
+      return localStorage.getItem('idealab_character_custom_context') || '';
+    } catch (e) {
+      console.error('Failed to load character custom context:', e);
+      return '';
+    }
+  });
 
   // 大纲生成内容选择器状态
   const [showOutlineContextSelector, setShowOutlineContextSelector] = useState(false);
-  const [selectedOutlineFields, setSelectedOutlineFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters']);
-  const [customOutlineContext, setCustomOutlineContext] = useState('');
+  const [selectedOutlineFields, setSelectedOutlineFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('idealab_outline_selected_fields');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load outline fields:', e);
+    }
+    return ['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters'];
+  });
+  const [customOutlineContext, setCustomOutlineContext] = useState(() => {
+    try {
+      return localStorage.getItem('idealab_outline_custom_context') || '';
+    } catch (e) {
+      console.error('Failed to load outline custom context:', e);
+      return '';
+    }
+  });
 
   // 分卷生成内容选择器状态
   const [showVolumeContextSelector, setShowVolumeContextSelector] = useState(false);
-  const [selectedVolumeFields, setSelectedVolumeFields] = useState<string[]>(['outline']);
-  const [customVolumeContext, setCustomVolumeContext] = useState('');
+  const [selectedVolumeFields, setSelectedVolumeFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('idealab_volume_selected_fields');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load volume fields:', e);
+    }
+    return ['outline'];
+  });
+  const [customVolumeContext, setCustomVolumeContext] = useState(() => {
+    try {
+      return localStorage.getItem('idealab_volume_custom_context') || '';
+    } catch (e) {
+      console.error('Failed to load volume custom context:', e);
+      return '';
+    }
+  });
 
   // 细纲生成内容选择器状态
   const [showBeatsContextSelector, setShowBeatsContextSelector] = useState(false);
-  const [selectedBeatsFields, setSelectedBeatsFields] = useState<string[]>(['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline']);
-  const [customBeatsContext, setCustomBeatsContext] = useState('');
+  const [selectedBeatsFields, setSelectedBeatsFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('idealab_beats_selected_fields');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load beats fields:', e);
+    }
+    return ['core', 'synopsis', 'genre', 'background', 'length', 'worldview', 'characters', 'outline'];
+  });
+  const [customBeatsContext, setCustomBeatsContext] = useState(() => {
+    try {
+      return localStorage.getItem('idealab_beats_custom_context') || '';
+    } catch (e) {
+      console.error('Failed to load custom context:', e);
+      return '';
+    }
+  });
 
   const toggleHistoryExpand = (id: string) => {
     setExpandedHistoryIds(prev =>
@@ -261,6 +332,161 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
     setStartChapterNum(next);
   }, [activeIdea?.id, activeIdea?.lastSplitChapterNum, activeIdea?.linkedBookId, books]);
+
+  // 保存素材选择到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_beats_selected_fields', JSON.stringify(selectedBeatsFields));
+    } catch (e) {
+      console.error('Failed to save beats fields to localStorage:', e);
+    }
+  }, [selectedBeatsFields]);
+
+  // 保存自定义素材文本到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_beats_custom_context', customBeatsContext);
+    } catch (e) {
+      console.error('Failed to save custom context to localStorage:', e);
+    }
+  }, [customBeatsContext]);
+  // 保存世界观素材选择
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_worldview_selected_fields', JSON.stringify(selectedWorldviewFields));
+    } catch (e) {
+      console.error('Failed to save worldview fields:', e);
+    }
+  }, [selectedWorldviewFields]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_worldview_custom_context', customWorldviewContext);
+    } catch (e) {
+      console.error('Failed to save worldview custom context:', e);
+    }
+  }, [customWorldviewContext]);
+
+  // 保存人物素材选择
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_character_selected_fields', JSON.stringify(selectedCharacterFields));
+    } catch (e) {
+      console.error('Failed to save character fields:', e);
+    }
+  }, [selectedCharacterFields]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_character_custom_context', customCharacterContext);
+    } catch (e) {
+      console.error('Failed to save character custom context:', e);
+    }
+  }, [customCharacterContext]);
+
+  // 保存大纲素材选择
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_outline_selected_fields', JSON.stringify(selectedOutlineFields));
+    } catch (e) {
+      console.error('Failed to save outline fields:', e);
+    }
+  }, [selectedOutlineFields]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_outline_custom_context', customOutlineContext);
+    } catch (e) {
+      console.error('Failed to save outline custom context:', e);
+    }
+  }, [customOutlineContext]);
+
+  // 保存分卷素材选择
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_volume_selected_fields', JSON.stringify(selectedVolumeFields));
+    } catch (e) {
+      console.error('Failed to save volume fields:', e);
+    }
+  }, [selectedVolumeFields]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('idealab_volume_custom_context', customVolumeContext);
+    } catch (e) {
+      console.error('Failed to save volume custom context:', e);
+    }
+  }, [customVolumeContext]);
+  // 保存提示词选择到 localStorage
+  useEffect(() => {
+    if (beatsPromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_beats', beatsPromptId);
+      } catch (e) {
+        console.error('Failed to save beats prompt:', e);
+      }
+    }
+  }, [beatsPromptId]);
+
+  useEffect(() => {
+    if (worldviewPromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_worldview', worldviewPromptId);
+      } catch (e) {
+        console.error('Failed to save worldview prompt:', e);
+      }
+    }
+  }, [worldviewPromptId]);
+
+  useEffect(() => {
+    if (characterPromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_character', characterPromptId);
+      } catch (e) {
+        console.error('Failed to save character prompt:', e);
+      }
+    }
+  }, [characterPromptId]);
+
+  useEffect(() => {
+    if (outlinePromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_outline', outlinePromptId);
+      } catch (e) {
+        console.error('Failed to save outline prompt:', e);
+      }
+    }
+  }, [outlinePromptId]);
+
+  useEffect(() => {
+    if (corePromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_core', corePromptId);
+      } catch (e) {
+        console.error('Failed to save core prompt:', e);
+      }
+    }
+  }, [corePromptId]);
+
+  useEffect(() => {
+    if (sparkPromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_spark', sparkPromptId);
+      } catch (e) {
+        console.error('Failed to save spark prompt:', e);
+      }
+    }
+  }, [sparkPromptId]);
+
+  useEffect(() => {
+    if (volumePromptId) {
+      try {
+        localStorage.setItem('idealab_default_prompt_volume', volumePromptId);
+      } catch (e) {
+        console.error('Failed to save volume prompt:', e);
+      }
+    }
+  }, [volumePromptId]);
 
   const handleGenerateCoreAndSynopsis = async () => {
     if (!activeIdea || isGenerating) return;
@@ -867,10 +1093,6 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         createdAt: Date.now()
       };
 
-      // Add the new split to history as well for reference
-      updatedHistory.push(newSplit);
-      const lastChapterNum = startChapter + beats.length - 1;
-
       const historyEntry: GenerationHistoryEntry = {
         id: Date.now().toString(),
         type: 'beats',
@@ -893,9 +1115,28 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
         historyEntry
       });
 
-      // 将生成结果保存到待确认状态,显示预览弹窗
-      setPendingBeats(beats);
-      setShowBeatsPreview(true);
+      // 直接保存生成的细纲，不显示预览弹窗
+      const lastChapterNum = startChapter + beats.length - 1;
+
+      // 将新生成的章节追加到现有列表后面
+      const updatedChapterBeats = [...(activeIdea.chapterBeats || []), ...beats];
+
+      // 更新idea，追加章节细纲
+      onUpdateIdea(activeIdea.id, {
+        beatsSplitHistory: updatedHistory,
+        lastSplitChapterNum: lastChapterNum,
+        chapterBeats: updatedChapterBeats, // 追加而非替换
+        generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
+      });
+
+      setCurrentSplit(newSplit);
+      setVolumeContent(''); // 清空输入
+      setShowSplitHistory(false);
+
+      // 重置参考章节选择器状态，以便下次拆解时可以重新选择
+      setShowRefChapterSelector(false);
+
+      alert(`成功生成 ${beats.length} 个章节细纲！`);
 
     } catch (e) {
       alert((e as Error).message);
@@ -1015,9 +1256,6 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     if (!activeIdea.linkedBookId) {
       if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
         onConvertToBook(activeIdea);
-        // After conversion, the idea should be updated with linkedBookId, but we might need to wait or rely on user to click again.
-        // For simplicity in this flow, onConvertToBook usually switches context or updates state.
-        // But let's just alert user to try again after conversion logic handles it.
       }
       return;
     }
@@ -1028,26 +1266,15 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
 
     const newChapters: Chapter[] = activeIdea.chapterBeats.map((beat, idx) => {
-      // Format scenes into content
-      let content = '';
-      if (beat.scenes && beat.scenes.length > 0) {
-        content = beat.scenes.map(scene =>
-          `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
-        ).join('\n\n');
-      } else {
-        content = beat.summary || '';
-      }
-
-      // Add extra metadata to summary if needed
-      const summary = beat.summary +
-        (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
-        (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+      // 从字符串中提取标题（第一行）
+      const lines = beat.split('\n');
+      const title = lines[0] || `第${idx + 1}章`;
 
       return {
         id: Date.now().toString() + '_' + idx,
-        title: beat.chapterTitle,
-        summary: summary,
-        content: content // Initial draft content from scenes
+        title: title,
+        content: beat, // 使用完整的细纲内容作为初始正文
+        summary: ''
       };
     });
 
@@ -1059,14 +1286,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
 
   // Push a single chapter beat to the linked book
   const handlePushSingleBeatToBook = (beatIndex: number) => {
-    if (!activeIdea || !activeIdea.chapterBeats || beatIndex >= activeIdea.chapterBeats.length) return;
-
-    if (!activeIdea.linkedBookId) {
-      if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
-        onConvertToBook(activeIdea);
-      }
-      return;
-    }
+    if (!activeIdea || !activeIdea.linkedBookId || !activeIdea.chapterBeats) return;
 
     if (!onPushChapters) {
       alert("无法推送到作品：功能未连接");
@@ -1074,32 +1294,19 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
 
     const beat = activeIdea.chapterBeats[beatIndex];
-
-    // Format scenes into content
-    let content = '';
-    if (beat.scenes && beat.scenes.length > 0) {
-      content = beat.scenes.map(scene =>
-        `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
-      ).join('\n\n');
-    } else {
-      content = beat.summary || '';
-    }
-
-    // Add extra metadata to summary
-    const summary = beat.summary +
-      (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
-      (beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+    const lines = beat.split('\n');
+    const title = lines[0] || `第${beatIndex + 1}章`;
 
     const newChapter: Chapter = {
       id: Date.now().toString(),
-      title: beat.chapterTitle,
-      summary: summary,
-      content: content
+      title: title,
+      content: beat, // 使用完整的细纲内容作为初始正文
+      summary: '' // 可以留空或从内容中提取
     };
 
-    if (window.confirm(`即将推送「${beat.chapterTitle}」到关联作品。确定吗？`)) {
+    if (window.confirm(`即将推送「${title}」到关联作品。确定吗？`)) {
       onPushChapters(activeIdea.linkedBookId, [newChapter]);
-      alert(`「${beat.chapterTitle}」已成功推送到作品目录！`);
+      alert(`「${title}」已成功推送到作品目录！`);
     }
   };
 
@@ -2777,380 +2984,46 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                     {/* Right: Beats List */}
                     <div className="xl:col-span-3 space-y-4">
                       {activeIdea.chapterBeats && activeIdea.chapterBeats.length > 0 ? (
-                        <>
-                          {/* 控制栏：排序、每页显示条数 */}
-                          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              {/* 总数显示 */}
-                              <div className="text-sm text-gray-400">
-                                共 <span className="text-indigo-400 font-bold">{activeIdea.chapterBeats.length}</span> 个章节
-                              </div>
-
-                              {/* 排序按钮 */}
-                              <button
-                                onClick={() => setBeatsSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                                title={beatsSortOrder === 'asc' ? '正序排列' : '倒序排列'}
-                              >
-                                {beatsSortOrder === 'asc' ? (
-                                  <>
-                                    <ArrowUp className="w-3.5 h-3.5" />
-                                    正序
-                                  </>
-                                ) : (
-                                  <>
-                                    <ArrowDown className="w-3.5 h-3.5" />
-                                    倒序
-                                  </>
-                                )}
-                              </button>
+                        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
+                          {/* 顶部信息栏 */}
+                          <div className="flex items-center justify-between pb-4 border-b border-gray-800">
+                            <div className="text-sm text-gray-400">
+                              共 <span className="text-indigo-400 font-bold">{activeIdea.chapterBeats.length}</span> 个章节
                             </div>
-
-                            {/* 每页显示条数 */}
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500">每页显示</span>
-                              <select
-                                value={beatsPerPage}
-                                onChange={(e) => {
-                                  setBeatsPerPage(Number(e.target.value));
-                                  setBeatsCurrentPage(1); // 重置到第一页
-                                }}
-                                className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value={5}>5 条</option>
-                                <option value={10}>10 条</option>
-                                <option value={20}>20 条</option>
-                                <option value={50}>50 条</option>
-                                <option value={100}>100 条</option>
-                                <option value={activeIdea.chapterBeats.length}>全部</option>
-                              </select>
-                            </div>
+                            <button
+                              onClick={() => {
+                                if (window.confirm('确定要清空所有章节细纲吗？')) {
+                                  onUpdateIdea(activeIdea.id, { chapterBeats: [] });
+                                }
+                              }}
+                              className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              清空全部
+                            </button>
                           </div>
 
-                          {/* 章节列表 */}
-                          <div className="space-y-4">
-                            {(() => {
-                              // 排序逻辑
-                              const sortedBeats = [...activeIdea.chapterBeats];
-                              if (beatsSortOrder === 'desc') {
-                                sortedBeats.reverse();
-                              }
+                          {/* 编辑框 */}
+                          <textarea
+                            value={activeIdea.chapterBeats.join('\n\n' + '='.repeat(80) + '\n\n')}
+                            onChange={(e) => {
+                              // 将文本按分隔符拆分回数组
+                              const separator = '='.repeat(80);
+                              const chapters = e.target.value
+                                .split(new RegExp(`\\n\\n${separator}\\n\\n`, 'g'))
+                                .map(ch => ch.trim())
+                                .filter(ch => ch.length > 0);
+                              onUpdateIdea(activeIdea.id, { chapterBeats: chapters });
+                            }}
+                            className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-6 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none font-mono leading-relaxed"
+                            rows={30}
+                            placeholder="章节细纲内容将在这里显示..."
+                          />
 
-                              // 分页逻辑
-                              const totalPages = Math.ceil(sortedBeats.length / beatsPerPage);
-                              const startIndex = (beatsCurrentPage - 1) * beatsPerPage;
-                              const endIndex = startIndex + beatsPerPage;
-                              const paginatedBeats = sortedBeats.slice(startIndex, endIndex);
-
-                              return paginatedBeats.map((beat, displayIdx) => {
-                                // 计算原始索引（用于更新数据）
-                                const originalIdx = beatsSortOrder === 'asc'
-                                  ? startIndex + displayIdx
-                                  : activeIdea.chapterBeats!.length - 1 - (startIndex + displayIdx);
-
-                                const isChapterExpanded = expandedChapterIndices.includes(originalIdx);
-
-                                return (
-                                  <div key={originalIdx} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors group">
-                                    {/* 章节标题栏 - 始终显示 */}
-                                    <div
-                                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50 transition-colors"
-                                      onClick={() => toggleChapterExpand(originalIdx)}
-                                    >
-                                      <div className="flex items-center flex-1 min-w-0">
-                                        <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0">
-                                          {originalIdx + 1}
-                                        </span>
-                                        <input
-                                          value={beat.chapterTitle}
-                                          onChange={(e) => {
-                                            e.stopPropagation();
-                                            const updated = [...activeIdea.chapterBeats!];
-                                            updated[originalIdx] = { ...beat, chapterTitle: e.target.value };
-                                            onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="bg-transparent text-lg font-bold text-gray-200 focus:outline-none flex-1 min-w-0"
-                                          placeholder="章节标题"
-                                        />
-                                      </div>
-
-                                      <div className="flex items-center gap-2 ml-4">
-                                        {/* 操作按钮 */}
-                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          {activeIdea.linkedBookId && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePushSingleBeatToBook(originalIdx);
-                                              }}
-                                              className="text-gray-500 hover:text-green-400 transition-colors p-1"
-                                              title="推送此章节到作品"
-                                            >
-                                              <Upload className="w-4 h-4" />
-                                            </button>
-                                          )}
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const updated = activeIdea.chapterBeats!.filter((_, i) => i !== originalIdx);
-                                              onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                            }}
-                                            className="text-gray-600 hover:text-red-400 transition-colors p-1"
-                                            title="删除此章节"
-                                          >
-                                            <Trash2 className="w-4 h-4" />
-                                          </button>
-                                        </div>
-
-                                        {/* 展开/折叠图标 */}
-                                        <div className="text-gray-500">
-                                          {isChapterExpanded ? (
-                                            <ChevronUp className="w-5 h-5" />
-                                          ) : (
-                                            <ChevronDown className="w-5 h-5" />
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* 章节详细内容 - 折叠/展开 */}
-                                    {isChapterExpanded && (
-                                      <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                          <div className="space-y-2">
-                                            <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
-                                            <textarea
-                                              value={beat.summary}
-                                              onChange={(e) => {
-                                                const updated = [...activeIdea.chapterBeats!];
-                                                updated[originalIdx] = { ...beat, summary: e.target.value };
-                                                onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                              }}
-                                              className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20 transition-colors resize-none h-24"
-                                            />
-                                          </div>
-                                          <div className="space-y-4">
-                                            <div className="space-y-2">
-                                              <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
-                                              <input
-                                                value={beat.conflict}
-                                                onChange={(e) => {
-                                                  const updated = [...activeIdea.chapterBeats!];
-                                                  updated[originalIdx] = { ...beat, conflict: e.target.value };
-                                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                                }}
-                                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
-                                              />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
-                                              <input
-                                                value={beat.keyCharacters.join(', ')}
-                                                onChange={(e) => {
-                                                  const updated = [...activeIdea.chapterBeats!];
-                                                  updated[originalIdx] = { ...beat, keyCharacters: e.target.value.split(',').map(s => s.trim()) };
-                                                  onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                                }}
-                                                className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500/20"
-                                                placeholder="逗号分隔角色名"
-                                              />
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Scene Breakdown - 保持现有不变 */}
-                                        {beat.scenes && beat.scenes.length > 0 && (
-                                          <div className="mt-6 border-t border-gray-800 pt-4">
-                                            <button
-                                              onClick={() => toggleBeatExpand(originalIdx)}
-                                              className="w-full h-4 text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-between hover:text-gray-300 transition-colors group"
-                                            >
-                                              <div className="flex items-center">
-                                                <List className="w-3 h-3 mr-1.5" />
-                                                场景细化
-                                                <span className="ml-2 text-[10px] lowercase font-normal opacity-50 group-hover:opacity-100 italic">
-                                                  ({beat.scenes.length} 个场景)
-                                                </span>
-                                              </div>
-                                              {expandedBeatIndices.includes(originalIdx) ? (
-                                                <ChevronUp className="w-3 h-3" />
-                                              ) : (
-                                                <ChevronDown className="w-3 h-3" />
-                                              )}
-                                            </button>
-
-                                            {expandedBeatIndices.includes(originalIdx) && (
-                                              <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                                                <textarea
-                                                  value={beat.scenes.map((scene, sIdx) =>
-                                                    `场景${sIdx + 1}：${scene.sceneTitle} (${scene.wordCount})\n${scene.detail}`
-                                                  ).join('\n\n')}
-                                                  onChange={(e) => {
-                                                    const text = e.target.value;
-                                                    // 解析文本回场景数组
-                                                    const sceneBlocks = text.split(/\n\n+/);
-                                                    const newScenes = sceneBlocks.map(block => {
-                                                      const lines = block.trim().split('\n');
-                                                      if (lines.length === 0) return null;
-
-                                                      const firstLine = lines[0];
-                                                      // 匹配 "场景X：标题 (字数)" 格式
-                                                      const match = firstLine.match(/^场景\d+[：:]\s*(.+?)\s*\((.+?)\)\s*$/);
-
-                                                      if (match) {
-                                                        return {
-                                                          sceneTitle: match[1].trim(),
-                                                          wordCount: match[2].trim(),
-                                                          detail: lines.slice(1).join('\n').trim()
-                                                        };
-                                                      } else {
-                                                        // 如果格式不匹配，尝试简单解析
-                                                        return {
-                                                          sceneTitle: firstLine.replace(/^场景\d+[：:]\s*/, '').trim(),
-                                                          wordCount: '400字',
-                                                          detail: lines.slice(1).join('\n').trim()
-                                                        };
-                                                      }
-                                                    }).filter(s => s !== null) as ChapterScene[];
-
-                                                    const updated = [...activeIdea.chapterBeats!];
-                                                    updated[originalIdx] = { ...beat, scenes: newScenes };
-                                                    onUpdateIdea(activeIdea.id, { chapterBeats: updated });
-                                                  }}
-                                                  className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/30 transition-colors resize-none leading-relaxed font-mono"
-                                                  rows={Math.max(8, beat.scenes.length * 3)}
-                                                  placeholder="场景1：场景标题 (400字)&#10;场景描述和关键线索...&#10;&#10;场景2：场景标题 (500字)&#10;场景描述..."
-                                                />
-                                                <p className="text-xs text-gray-600 mt-2 italic">
-                                                  💡 提示：每个场景用空行分隔，格式为"场景X：标题 (字数)"后跟描述
-                                                </p>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-
-                          {/* 分页控制器 */}
-                          {(() => {
-                            const totalPages = Math.ceil(activeIdea.chapterBeats.length / beatsPerPage);
-
-                            if (totalPages <= 1) return null; // 只有一页时不显示分页
-
-                            const renderPageNumbers = () => {
-                              const pages = [];
-                              const maxVisible = 7; // 最多显示7个页码
-
-                              if (totalPages <= maxVisible) {
-                                // 总页数少于最大显示数，显示所有页码
-                                for (let i = 1; i <= totalPages; i++) {
-                                  pages.push(i);
-                                }
-                              } else {
-                                // 总页数多，显示省略号
-                                if (beatsCurrentPage <= 4) {
-                                  // 当前页在前面
-                                  for (let i = 1; i <= 5; i++) pages.push(i);
-                                  pages.push('...');
-                                  pages.push(totalPages);
-                                } else if (beatsCurrentPage >= totalPages - 3) {
-                                  // 当前页在后面
-                                  pages.push(1);
-                                  pages.push('...');
-                                  for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
-                                } else {
-                                  // 当前页在中间
-                                  pages.push(1);
-                                  pages.push('...');
-                                  for (let i = beatsCurrentPage - 1; i <= beatsCurrentPage + 1; i++) pages.push(i);
-                                  pages.push('...');
-                                  pages.push(totalPages);
-                                }
-                              }
-
-                              return pages;
-                            };
-
-                            return (
-                              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                                <div className="text-xs text-gray-500">
-                                  显示 {(beatsCurrentPage - 1) * beatsPerPage + 1} - {Math.min(beatsCurrentPage * beatsPerPage, activeIdea.chapterBeats.length)} / 共 {activeIdea.chapterBeats.length} 条
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  {/* 上一页 */}
-                                  <button
-                                    onClick={() => setBeatsCurrentPage(prev => Math.max(1, prev - 1))}
-                                    disabled={beatsCurrentPage === 1}
-                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                                  >
-                                    上一页
-                                  </button>
-
-                                  {/* 页码 */}
-                                  <div className="flex items-center gap-1">
-                                    {renderPageNumbers().map((page, idx) => {
-                                      if (page === '...') {
-                                        return (
-                                          <span key={`ellipsis-${idx}`} className="px-2 text-gray-600">
-                                            ...
-                                          </span>
-                                        );
-                                      }
-
-                                      return (
-                                        <button
-                                          key={page}
-                                          onClick={() => setBeatsCurrentPage(page as number)}
-                                          className={`min-w-[32px] h-8 rounded-lg text-xs font-medium transition-colors ${beatsCurrentPage === page
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
-                                            }`}
-                                        >
-                                          {page}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* 下一页 */}
-                                  <button
-                                    onClick={() => setBeatsCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                    disabled={beatsCurrentPage === totalPages}
-                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-                                  >
-                                    下一页
-                                  </button>
-
-                                  {/* 跳转到页 */}
-                                  <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
-                                    <span className="text-xs text-gray-500">跳转</span>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={totalPages}
-                                      value={beatsCurrentPage}
-                                      onChange={(e) => {
-                                        const page = parseInt(e.target.value);
-                                        if (page >= 1 && page <= totalPages) {
-                                          setBeatsCurrentPage(page);
-                                        }
-                                      }}
-                                      className="w-14 bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 text-center focus:outline-none focus:border-indigo-500"
-                                    />
-                                    <span className="text-xs text-gray-500">/ {totalPages}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </>
+                          <p className="text-xs text-gray-600 italic">
+                            💡 提示：章节之间用 80 个等号分隔。你可以直接编辑所有内容，修改会自动保存。
+                          </p>
+                        </div>
                       ) : (
                         <div className="h-96 flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-3xl">
                           <FileText className="w-16 h-16 mb-4 opacity-10" />

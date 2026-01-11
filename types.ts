@@ -54,27 +54,13 @@ export interface PromptTemplate {
 
 // --- Idea Lab Interfaces ---
 
-export interface ChapterScene {
-  sceneTitle: string;
-  detail: string;
-  wordCount: string;
-}
-
-export interface ChapterBeat {
-  chapterTitle: string;
-  summary: string;
-  keyCharacters: string[];
-  conflict: string;
-  scenes?: ChapterScene[];
-}
-
 // 细纲拆分记录
 export interface BeatsSplit {
   id: string;
   volumeContent: string; // 卷内容
   chapterCount: number; // 拆分章数
   startChapter: number; // 起始章节号
-  beats: ChapterBeat[]; // 拆分结果
+  beats: string[]; // 拆分结果 - 简化为字符串数组
   createdAt: number;
 }
 
@@ -129,7 +115,7 @@ export interface IdeaProject {
   characters?: CharacterProfile[]; // 新增：角色人物小传
   outline: string;
   volumes?: Volume[];
-  chapterBeats?: ChapterBeat[];
+  chapterBeats?: string[]; // 章节细纲 - 简化为字符串数组
   beatsSplitHistory?: BeatsSplit[];
   lastSplitChapterNum?: number;
   linkedBookId?: string; // ID of the actual book project this idea is linked to

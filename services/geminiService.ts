@@ -1,5 +1,5 @@
 ﻿import { GoogleGenAI } from "@google/genai";
-import { Entity, Chapter, EntityType, ModelConfig, ChapterBeat, BeatsSplit, CharacterProfile } from '../types';
+import { Entity, Chapter, EntityType, ModelConfig, BeatsSplit, CharacterProfile } from '../types';
 
 // Default env key
 const DEFAULT_API_KEY = process.env.API_KEY || '';
@@ -1006,7 +1006,7 @@ export const generateChapterBeatsFromOutline = async (
   modelConfig: ModelConfig,
   outline: string,
   customTemplate?: string
-): Promise<ChapterBeat[]> => {
+): Promise<string[]> => {
   let promptContent = '';
 
   if (customTemplate) {
@@ -1081,7 +1081,11 @@ export const generateChapterBeatsFromOutline = async (
     }
 
     try {
-      return JSON.parse(jsonStr) as ChapterBeat[];
+      const result = JSON.parse(jsonStr) as string[];
+      if (!Array.isArray(result) || !result.every(item => typeof item === 'string')) {
+        throw new Error('返回的数据不是字符串数组');
+      }
+      return result;
     } catch (e) {
       console.error("JSON Parse Error. Raw:", text);
       throw new Error("AI 返回数据无法解析，请重试。");
@@ -1111,7 +1115,7 @@ export const generateBeatsFromVolumeContent = async (
     outline?: string;
   },
   customTemplate?: string
-): Promise<ChapterBeat[]> => {
+): Promise<string[]> => {
   let promptContent = '';
 
   const { volumeContent, chapterCount, startChapter, referenceContext } = context;
@@ -1155,24 +1159,17 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
     ${promptContent}
     
     --- 输出规范 ---
-    请严格返回 JSON 数组格式，不要包含任何 markdown 代码块标记，格式如下：
+    请严格返回 JSON 字符串数组格式，不要包含任何 markdown 代码块标记。
+    每个元素是一个章节的完整细纲内容（包含标题、梗概、冲突、角色、场景等所有信息）。
+    
+    格式如下：
     [
-      {
-        "chapterTitle": "第${startChapter}章：具体标题",
-        "summary": "本章的具体事件摘要...",
-        "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点",
-        "scenes": [
-          {
-             "sceneTitle": "场景一：场景名",
-             "detail": "关键线索或冲突点描述...",
-             "wordCount": "400字"
-          },
-          ...
-        ]
-      },
+      "第${startChapter}章：章节标题\n\n【本章梗概】\n本章的具体事件摘要...\n\n【核心冲突】\n本章的核心冲突点...\n\n【出场角色】\n主角名、配角名\n\n【场景细化】\n场景一：场景名（400字）\n关键线索或冲突点描述...\n\n场景二：场景名（500字）\n...",
+      "第${startChapter + 1}章：章节标题\n\n...",
       ...
     ]
+    
+    注意：每个字符串元素应该是一个完整的章节细纲，包含所有必要信息，格式清晰易读。
   `;
 
   const systemInstruction = `你是一个深耕网文创作的 AI 助手。你极其擅长逻辑推演和细节丰满。
@@ -1220,31 +1217,33 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
     }
 
     try {
-      return JSON.parse(jsonStr) as ChapterBeat[];
+      const result = JSON.parse(jsonStr) as string[];
+      // 验证结果是字符串数组
+      if (!Array.isArray(result) || !result.every(item => typeof item === 'string')) {
+        throw new Error('返回的数据不是字符串数组');
+      }
+      return result;
     } catch (parseError) {
-      console.warn("Initial JSON parse failed, attempting iterative recovery for truncated JSON...");
+      console.warn("Initial JSON parse failed, attempting recovery...");
 
-      // Iterative Recovery Logic:
-      // Repeatedly try to cut off the last '}' and append ']' until valid JSON is formed.
-      // This effectively discards incomplete nested structures or incomplete last items.
+      // 尝试简单的恢复：查找最后一个完整的引号并截断
       let currentStr = jsonStr;
       let attempts = 0;
-      const MAX_ATTEMPTS = 50; // Prevent infinite loops for very large or malformed strings
+      const MAX_ATTEMPTS = 20;
 
-      while (currentStr.lastIndexOf('}') !== -1 && attempts < MAX_ATTEMPTS) {
+      while (currentStr.lastIndexOf('"') !== -1 && attempts < MAX_ATTEMPTS) {
         attempts++;
-        const lastBraceIdx = currentStr.lastIndexOf('}');
-
-        // Keep everything up to this last brace
-        currentStr = currentStr.substring(0, lastBraceIdx + 1);
+        const lastQuoteIdx = currentStr.lastIndexOf('"');
+        currentStr = currentStr.substring(0, lastQuoteIdx + 1);
         const attemptStr = currentStr + ']';
 
         try {
-          const recoveredData = JSON.parse(attemptStr) as ChapterBeat[];
-          console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
-          return recoveredData;
+          const recoveredData = JSON.parse(attemptStr) as string[];
+          if (Array.isArray(recoveredData) && recoveredData.every(item => typeof item === 'string')) {
+            console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
+            return recoveredData;
+          }
         } catch (e) {
-          // If this attempt failed, strip the last brace we just tried and continue searching backwards
           currentStr = currentStr.substring(0, currentStr.length - 1);
         }
       }

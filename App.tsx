@@ -499,27 +499,15 @@ const App: React.FC = () => {
       entities: newEntities,
       chapters: idea.chapterBeats && idea.chapterBeats.length > 0
         ? idea.chapterBeats.map((beat, idx) => {
-          // Format scenes into content (consistent with handlePushBeatsToBook)
-          let chapterContent = '';
-          if (beat.scenes && beat.scenes.length > 0) {
-            chapterContent = beat.scenes.map(scene =>
-              `### ${scene.sceneTitle} (${scene.wordCount})\n\n${scene.detail}`
-            ).join('\n\n');
-          } else {
-            // Fallback to summary-based content if no scenes
-            chapterContent = `【本章摘要】\n${beat.summary}\n\n【核心冲突】\n${beat.conflict}\n\n【出场人物】\n${beat.keyCharacters ? beat.keyCharacters.join(', ') : ''}\n\n(在此开始写作...)`;
-          }
-
-          // Add extra metadata to summary
-          const chapterSummary = beat.summary +
-            (beat.conflict ? `\n\n【冲突】${beat.conflict}` : '') +
-            (beat.keyCharacters && beat.keyCharacters.length > 0 ? `\n【角色】${beat.keyCharacters.join(', ')}` : '');
+          // 从字符串中提取标题（第一行）
+          const lines = beat.split('\n');
+          const title = lines[0] || `第${idx + 1}章`;
 
           return {
-            id: Date.now().toString() + `_c${idx}`,
-            title: beat.chapterTitle,
-            summary: chapterSummary,
-            content: chapterContent
+            id: `chapter-${Date.now()}-${idx}`,
+            title: title,
+            content: beat, // 使用完整的细纲内容作为初始正文
+            summary: '' // 可以从内容中提取概要
           };
         })
         : [{ id: Date.now() + '_c', title: '第一章', content: '' }]

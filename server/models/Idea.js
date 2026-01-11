@@ -1,19 +1,5 @@
 const mongoose = require('mongoose');
 
-const ChapterSceneSchema = new mongoose.Schema({
-    sceneTitle: { type: String, required: true },
-    detail: { type: String, required: true },
-    wordCount: { type: String }
-});
-
-const ChapterBeatSchema = new mongoose.Schema({
-    chapterTitle: { type: String, required: true },
-    summary: { type: String, required: true },
-    keyCharacters: [String],
-    conflict: { type: String, required: true },
-    scenes: [ChapterSceneSchema]
-});
-
 const PartSchema = new mongoose.Schema({
     id: { type: String, required: true },
     title: { type: String, required: true },
@@ -34,7 +20,7 @@ const BeatsSplitSchema = new mongoose.Schema({
     volumeContent: { type: String, required: true },
     chapterCount: { type: Number, required: true },
     startChapter: { type: Number, required: true },
-    beats: [ChapterBeatSchema],
+    beats: [String], // 简化为字符串数组
     createdAt: { type: Number, required: true }
 });
 
@@ -74,7 +60,7 @@ const IdeaSchema = new mongoose.Schema({
     characters: [CharacterProfileSchema], // Added
     outline: { type: String, default: '' },
     volumes: [VolumeSchema], // Added
-    chapterBeats: [ChapterBeatSchema],
+    chapterBeats: [String], // 简化为字符串数组
     beatsSplitHistory: [BeatsSplitSchema], // Added
     lastSplitChapterNum: { type: Number, default: 0 }, // Added
     linkedBookId: { type: String }, // Added
