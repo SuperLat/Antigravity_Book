@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Entity, EntityType } from '../types';
 import { Plus, Trash2, Lightbulb, Wand2, Loader2, User, Globe, BookMarked, Sparkles } from 'lucide-react';
+import { useDialog } from '../hooks/useDialog';
+import { CustomDialog } from './CustomDialog';
 
 interface WikiViewProps {
   entities: Entity[];
@@ -28,6 +30,9 @@ export const WikiView: React.FC<WikiViewProps> = ({
   isGenerating = false,
   selectedType
 }) => {
+  // 自定义对话框系统
+  const { dialogConfig, closeDialog, showConfirm } = useDialog();
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Filter entities by selected type
@@ -62,10 +67,13 @@ export const WikiView: React.FC<WikiViewProps> = ({
     onUpdateEntity(updated);
   };
 
-  const handleDelete = () => {
-    if (selectedEntity && window.confirm(`确定删除"${selectedEntity.name}"吗？`)) {
-      onDeleteEntity(selectedEntity.id);
-      setSelectedId(null);
+  const handleDelete = async () => {
+    if (selectedEntity) {
+      const confirmed = await showConfirm(`确定删除"${selectedEntity.name}"吗？`, '删除设定');
+      if (confirmed) {
+        onDeleteEntity(selectedEntity.id);
+        setSelectedId(null);
+      }
     }
   };
 
@@ -212,6 +220,9 @@ export const WikiView: React.FC<WikiViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* 全局自定义对话框 */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 };

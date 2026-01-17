@@ -497,44 +497,128 @@ export const generateNovelContent = async ({
   previousChapterSummary
 }: GenerationParams): Promise<string> => {
 
-  // 1. Construct the System Context from selected Wiki items
-  const contextBlock = selectedEntities.map(e =>
-    `【${getTypeLabel(e.type)} - ${e.name}】\n简介：${e.description}\n详细内容：${e.content}`
-  ).join('\n\n');
+  // === 统一的上下文打包逻辑（参考 IdeaLab） ===
 
-  // 1.5 Construct Context from selected Chapters (Limit content length to avoid token overflow)
-  const chapterBlock = selectedChapters.map(c => {
-    // Take the last 3000 characters of the referenced chapter to keep context relevant but manageable
-    const contentPreview = c.content.length > 3000
-      ? `...(前文省略)\n${c.content.slice(-3000)}`
-      : c.content;
-    return `【参考章节 - ${c.title}】\n${contentPreview}`;
-  }).join('\n\n');
+  // 1. 构建上下文对象
+  const context: {
+    entities?: string;
+    chapters?: string;
+    previousSummary?: string;
+    currentChapterPreview?: string;
+  } = {};
 
-  // 2. Construct Writing Context (Current Story State)
-  // Increase context window for current chapter to ensure continuity
-  const storyContext = `
-    【前情提要】: ${previousChapterSummary || "暂无"}
-    【当前章节内容 (续写起点)】: 
-    ${activeChapter.content.slice(-3000)} 
-    ... (以上为当前正文末尾)
-  `;
+  // 2. 打包知识库（Entity）内容
+  if (selectedEntities && selectedEntities.length > 0) {
+    const entityBlocks = selectedEntities.map(e => {
+      const lines = [];
+      lines.push(`### ${getTypeLabel(e.type)}: ${e.name}`);
+      if (e.description) lines.push(`**简介**: ${e.description}`);
+      if (e.content) lines.push(`**详细内容**:\n${e.content}`);
+      return lines.join('\n');
+    });
+    context.entities = entityBlocks.join('\n\n---\n\n');
+  }
 
-  // 3. Final Prompt Assembly
-  const finalPrompt = `
-    ${contextBlock ? `--- 关联的知识库 (Wiki) ---\n${contextBlock}\n------------------------------` : ''}
-    
-    ${chapterBlock ? `--- 关联的章节 (前文参考) ---\n${chapterBlock}\n------------------------------` : ''}
+  // 3. 打包关联章节内容
+  if (selectedChapters && selectedChapters.length > 0) {
+    const chapterBlocks = selectedChapters.map(c => {
+      const lines = [];
+      lines.push(`### 章节: ${c.title}`);
+      // 如果章节有概要，优先展示概要
+      if (c.summary) {
+        lines.push(`**概要**: ${c.summary}`);
+      }
+      // 取最后5000字符作为内容参考（与IdeaLab逻辑一致）
+      const contentPreview = c.content.length > 5000
+        ? `...(前文省略)\n${c.content.slice(-5000)}`
+        : c.content;
+      if (contentPreview) {
+        lines.push(`**正文参考**:\n${contentPreview}`);
+      }
+      return lines.join('\n');
+    });
+    context.chapters = chapterBlocks.join('\n\n---\n\n');
+  }
 
-    ${storyContext}
+  // 4. 打包前情提要
+  if (previousChapterSummary) {
+    context.previousSummary = previousChapterSummary;
+  }
 
-    --- 你的任务 ---
-    ${userPrompt}
-    
-    (请继续撰写正文，保持风格一致，情节连贯。)
-  `;
+  // 5. 打包当前章节内容（作为续写起点）
+  if (activeChapter && activeChapter.content) {
+    const previewLength = 3000;
+    context.currentChapterPreview = activeChapter.content.length > previewLength
+      ? `...(前文省略)\n${activeChapter.content.slice(-previewLength)}\n... (以上为当前正文末尾)`
+      : activeChapter.content;
+  }
 
-  const systemInstruction = "你是一位专业的小说家助手。你的目标是基于提供的世界观、角色设定和前文章节，辅助用户进行小说创作、扩写或润色。请务必保持现有文本的风格和语气。所有输出默认使用中文。";
+  // === 统一拼接最终Prompt ===
+  const promptParts: string[] = [];
+
+  // 添加知识库部分
+  if (context.entities) {
+    promptParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 关联的知识库（设定集）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${context.entities}
+`);
+  }
+
+  // 添加关联章节部分
+  if (context.chapters) {
+    promptParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📖 关联的章节（前文参考）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${context.chapters}
+`);
+  }
+
+  // 添加前情提要部分
+  if (context.previousSummary) {
+    promptParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⏮️ 前情提要
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${context.previousSummary}
+`);
+  }
+
+  // 添加当前章节内容
+  if (context.currentChapterPreview) {
+    promptParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✍️ 当前章节内容（续写起点）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${context.currentChapterPreview}
+`);
+  }
+
+  // 添加用户任务
+  promptParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 你的任务
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${userPrompt}
+
+（请基于以上所有信息进行创作，保持风格一致，情节连贯。）
+`);
+
+  const finalPrompt = promptParts.join('\n');
+
+  // --- 调试：在控制台输出最终的 Context/Prompt ---
+  console.log("%c[AI Context Assembly]", "color: #6366f1; font-weight: bold; font-size: 12px;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #6366f1;");
+
+  const systemInstruction = "请根据提供的结构化上下文（设定集、参考章节、前情提要等），严格执行用户的提示词指令。保持文风一致，所有输出默认使用中文。";
 
   try {
     // Route to different providers
@@ -918,6 +1002,11 @@ export const generateWorldviewWithContext = async (
 
   const prompt = customTemplate.replace(/{{context}}/g, contextText);
 
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Worldview Generation Prompt]", "color: #eab308; font-weight: bold;");
+  console.log(prompt);
+  console.log("%c-----------------------", "color: #eab308;");
+
   const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请基于用户提供的素材，构建逻辑自洽且精炼的世界观。务必充分利用提供的所有信息。";
 
   try {
@@ -976,6 +1065,11 @@ export const generateOutlineFromWorldview = async (
 
   const systemInstruction = "你是一个擅长构建剧情结构的小说主编。请设计情节紧凑、冲突激烈的大纲。";
 
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Outline Generation Prompt]", "color: #a855f7; font-weight: bold;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #a855f7;");
+
   try {
     if (modelConfig.provider === 'gemini') {
       initializeGemini(modelConfig.apiKey);
@@ -1024,23 +1118,15 @@ export const generateChapterBeatsFromOutline = async (
   const finalPrompt = `
     ${promptContent}
     
-    IMPORTANT:
-    请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
-    [
-      {
-        "chapterTitle": "第一章：具体标题",
-        "summary": "第一章的具体事件摘要...",
-        "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点"
-      },
-      {
-        "chapterTitle": "第二章：具体标题",
-        "summary": "第二章的具体事件摘要...",
-        "keyCharacters": ["主角名", "配角名"],
-        "conflict": "核心冲突点"
-      }
-    ]
+    --- 输出规范 ---
+    请严格返回 JSON 对象数组格式，不要包含任何 markdown 代码块标记。
+    请确保每个章节对象的具体字段和内容结构严格遵循你上方接收到的指令要求。
   `;
+
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Chapter Beats From Outline Prompt]", "color: #6366f1; font-weight: bold;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #6366f1;");
 
   const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。请确保每一章的内容都是独特的，不要重复相同的大纲。";
 
@@ -1159,18 +1245,17 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
     ${promptContent}
     
     --- 输出规范 ---
-    请严格返回 JSON 字符串数组格式，不要包含任何 markdown 代码块标记。
-    每个元素是一个章节的完整细纲内容（包含标题、梗概、冲突、角色、场景等所有信息）。
-    
-    格式如下：
-    [
-      "第${startChapter}章：章节标题\n\n【本章梗概】\n本章的具体事件摘要...\n\n【核心冲突】\n本章的核心冲突点...\n\n【出场角色】\n主角名、配角名\n\n【场景细化】\n场景一：场景名（400字）\n关键线索或冲突点描述...\n\n场景二：场景名（500字）\n...",
-      "第${startChapter + 1}章：章节标题\n\n...",
-      ...
-    ]
-    
-    注意：每个字符串元素应该是一个完整的章节细纲，包含所有必要信息，格式清晰易读。
+    1. 必须且仅返回一个符合 JSON 数组格式的字符串数组：["内容1", "内容2", ...]。
+    2. 数组中应包含 ${chapterCount} 个元素，每个元素对应一个章节。
+    3. 严禁包含任何 Markdown 格式标记（如 \`\`\`json）。
+    4. 请严格遵循上方提供的提示词指令中所要求的章节内容结构和写作风格。
+    5. **重点：请在章节内的标题、章节梗概、核心冲突等不同板块之间使用换行符（\\n）进行分隔，确保输出的内容易于阅读且美观。**
   `;
+
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Beats From Volume Prompt]", "color: #ec4899; font-weight: bold;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #ec4899;");
 
   const systemInstruction = `你是一个深耕网文创作的 AI 助手。你极其擅长逻辑推演和细节丰满。
 你的守则：
@@ -1284,22 +1369,16 @@ export const generateCharactersFromIdea = async (
   const finalPrompt = `
           ${promptContent}
           
-          IMPORTANT:
-          请严格返回 JSON 格式，数组结构，不要包含 markdown 代码块标记。格式如下：
-          [
-            {
-              "name": "角色名",
-              "role": "主角/反派/重要配角",
-              "gender": "男/女/其他",
-              "age": "年龄或视觉年龄",
-              "description": "简短的一句话介绍",
-              "personality": "详细的性格描述(100字内)...",
-              "appearance": "详细的外貌描写...",
-              "background": "详细的角色背景故事(100字内)..."
-            },
-            ...
-          ]
+          --- 输出规范 ---
+          1. 必须且仅返回一个符合 JSON 对象数组格式的数据。
+          2. 请严格遵循提示词中要求的字段名和数据结构。
+          3. 严禁包含任何 Markdown 代码块标记（如 \`\`\`json）。
         `;
+
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Characters Generation Prompt]", "color: #3b82f6; font-weight: bold;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #3b82f6;");
 
   const systemInstruction = "你是一个擅长创造鲜活角色的人物设计师。请设计有血有肉、动机合理的角色。仅返回纯 JSON 数据。";
 
@@ -1377,6 +1456,12 @@ export const generateCompleteOutline = async (
   }
 
   const finalPrompt = customTemplate.replace(/{{context}}/g, contextText);
+
+  // --- 调试：输出最终的 Prompt ---
+  console.log("%c[Complete Outline Generation Prompt]", "color: #8b5cf6; font-weight: bold;");
+  console.log(finalPrompt);
+  console.log("%c-----------------------", "color: #8b5cf6;");
+
   const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
 
   try {

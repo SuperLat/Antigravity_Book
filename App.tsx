@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
-
+import { CustomDialog } from './components/CustomDialog';
+import { useDialog } from './hooks/useDialog';
 import { WikiView } from './components/WikiView';
 import { Bookshelf } from './components/Bookshelf';
 import { IdeaLab } from './components/IdeaLab';
@@ -123,6 +124,9 @@ const App: React.FC = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showAILogs, setShowAILogs] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+
+  // 自定义对话框系统
+  const { dialogConfig, closeDialog, showConfirm, showSuccess, showError, showWarning, showInfo } = useDialog();
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -330,28 +334,23 @@ const App: React.FC = () => {
   };
 
   const handleDeleteBook = async (id: string) => {
-    if (window.confirm('确定要删除这本书吗？')) {
+    const confirmed = await showConfirm('确定要删除这本书吗？删除后可以在灵感实验室重新生成。', '删除书籍');
+    if (confirmed) {
       try {
         await booksAPI.delete(id);
         setBooks(prev => prev.filter(b => b.id !== id));
 
-        // Unlink associated idea if exists
-        const linkedIdea = ideas.find(i => i.linkedBookId === id);
-        if (linkedIdea) {
-          const updatedIdea = { ...linkedIdea, linkedBookId: undefined };
-          setIdeas(prev => prev.map(i => i.id === linkedIdea.id ? updatedIdea : i));
-          await ideasAPI.save(updatedIdea);
-        }
+        // 不再解除与灵感的关联，允许用户重新生成书籍
       } catch (error) {
         console.error("Failed to delete book", error);
-        alert("删除失败，请重试");
+        await showError("删除失败，请重试");
       }
     }
   };
 
-  const handleImportBook = (book: Book) => {
+  const handleImportBook = async (book: Book) => {
     setBooks(prev => [...prev, book]);
-    alert(`成功导入作品：《${book.title}》`);
+    await showSuccess(`成功导入作品：《${book.title}》`);
   };
 
   // --- Handlers: Ideas ---
@@ -377,18 +376,19 @@ const App: React.FC = () => {
   };
 
   const handleDeleteIdea = async (id: string) => {
-    if (window.confirm('确定删除此灵感项目吗？')) {
+    const confirmed = await showConfirm('确定删除此灵感项目吗？', '删除灵感');
+    if (confirmed) {
       try {
         await ideasAPI.delete(id);
         setIdeas(prev => prev.filter(i => i.id !== id));
       } catch (error) {
         console.error("Failed to delete idea", error);
-        alert("删除失败，请重试");
+        await showError("删除失败，请重试");
       }
     }
   };
 
-  const handleConvertIdeaToBook = (idea: IdeaProject) => {
+  const handleConvertIdeaToBook = async (idea: IdeaProject) => {
     // Build comprehensive entity list from Idea data
     const newEntities: Entity[] = [];
 
@@ -517,7 +517,7 @@ const App: React.FC = () => {
     // Link the idea to the new book automatically
     handleUpdateIdea(idea.id, { linkedBookId: newBook.id });
 
-    alert(`成功将《${idea.title}》转化为书籍！所有灵感数据已保存至设定集。`);
+    await showSuccess(`成功将《${idea.title}》转化为书籍！所有灵感数据已保存至设定集。`, '转化成功');
     setDashboardTab('bookshelf');
   };
 
@@ -531,13 +531,14 @@ const App: React.FC = () => {
   };
 
   const handleDeletePrompt = async (id: string) => {
-    if (window.confirm('确定删除此指令吗？')) {
+    const confirmed = await showConfirm('确定删除此指令吗？', '删除指令');
+    if (confirmed) {
       try {
         await promptsAPI.delete(id);
         setPrompts(prev => prev.filter(p => p.id !== id));
       } catch (error) {
         console.error("Failed to delete prompt", error);
-        alert("删除失败，请重试");
+        await showError("删除失败，请重试");
       }
     }
   };
@@ -636,10 +637,10 @@ const App: React.FC = () => {
     });
   };
 
-  const handleDeleteChapter = (id: string) => {
+  const handleDeleteChapter = async (id: string) => {
     if (!activeBook) return;
-    // Removed restriction to keep at least one chapter
-    if (window.confirm('确定要删除这个章节吗？')) {
+    const confirmed = await showConfirm('确定要删除这个章节吗？', '删除章节');
+    if (confirmed) {
       updateActiveBook(book => {
         const newChapters = book.chapters.filter(c => c.id !== id);
         return { ...book, chapters: newChapters };
@@ -691,7 +692,7 @@ const App: React.FC = () => {
     return summary;
   };
 
-  const handlePushChaptersToBook = (bookId: string, chapters: Chapter[]) => {
+  const handlePushChaptersToBook = async (bookId: string, chapters: Chapter[]) => {
     const targetBook = books.find(b => b.id === bookId);
     if (!targetBook) return;
 
@@ -724,9 +725,11 @@ const App: React.FC = () => {
         ? duplicateNums.join('、')
         : `${duplicateNums.slice(0, 5).join('、')}...等`;
 
-      if (!window.confirm(
-        `检测到 ${duplicates.length} 个章节编号已存在（第 ${displayNums} 章），推送将覆盖现有内容。\n\n是否继续？`
-      )) {
+      const confirmed = await showConfirm(
+        `检测到 ${duplicates.length} 个章节编号已存在（第 ${displayNums} 章），推送将覆盖现有内容。\n\n是否继续？`,
+        '覆盖确认'
+      );
+      if (!confirmed) {
         return;
       }
     }
@@ -764,7 +767,7 @@ const App: React.FC = () => {
     let resultMsg = `成功推送到《${targetBook.title}》：`;
     if (addCount > 0) resultMsg += `新增 ${addCount} 章`;
     if (overwriteCount > 0) resultMsg += `${addCount > 0 ? '，' : ''}覆盖 ${overwriteCount} 章`;
-    alert(resultMsg);
+    await showSuccess(resultMsg, '推送成功');
   };
 
   const handleSaveSummary = (summary: string) => {
@@ -1168,6 +1171,9 @@ const App: React.FC = () => {
           defaultModelId={settings.defaultModelId}
         />
       )}
+
+      {/* 全局自定义对话框 */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 };

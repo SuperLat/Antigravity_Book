@@ -3,6 +3,8 @@ import React, { useState, useRef } from 'react';
 import { Book as BookType, EntityType, Entity, Chapter } from '../types';
 import { Book, Plus, BookOpen, Download, Trash2, Archive, Loader2, Upload, MoreVertical, Edit, X } from 'lucide-react';
 import JSZip from 'jszip';
+import { useDialog } from '../hooks/useDialog';
+import { CustomDialog } from './CustomDialog';
 
 interface BookshelfProps {
   books: BookType[];
@@ -14,6 +16,9 @@ interface BookshelfProps {
 }
 
 export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCreateBook, onUpdateBook, onDeleteBook, onImportBook }) => {
+  // 自定义对话框系统
+  const { dialogConfig, closeDialog, showConfirm, showSuccess, showError } = useDialog();
+
   const [showNewBookModal, setShowNewBookModal] = useState(false);
   const [newBookTitle, setNewBookTitle] = useState('');
   const [newBookDesc, setNewBookDesc] = useState('');
@@ -156,7 +161,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
 
     } catch (error) {
       console.error("Export failed", error);
-      alert("导出失败，请重试");
+      await showError("导出失败，请重试");
     } finally {
       setExportingId(null);
     }
@@ -266,10 +271,10 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
           const match = group.name.match(/^(\d{3})_(.*)$/);
           const order = match ? parseInt(match[1]) : 999;
           const title = match ? match[2].replace(/_/g, ' ') : group.name;
-          
+
           let summary = '';
           let content = fullContent;
-          
+
           const summaryMatch = fullContent.match(/^---SUMMARY---\n([\s\S]*?)\n---CONTENT---\n/);
 
           if (summaryMatch) {
@@ -328,7 +333,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
 
     } catch (e) {
       console.error(e);
-      alert("导入失败：文件格式不正确或已损坏");
+      await showError("导入失败：文件格式不正确或已损坏");
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -558,6 +563,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({ books, onSelectBook, onCre
           </div>
         </div>
       )}
+
+      {/* 全局自定义对话框 */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 };

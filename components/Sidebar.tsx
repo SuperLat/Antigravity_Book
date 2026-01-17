@@ -1,6 +1,8 @@
 import React from 'react';
 import { Book, FileText, BookOpen, Settings, Database, ChevronLeft, Trash2, User, Globe, BookMarked, ArrowDownAZ, ArrowUpAZ } from 'lucide-react';
 import { Book as BookType, EntityType } from '../types';
+import { useDialog } from '../hooks/useDialog';
+import { CustomDialog } from './CustomDialog';
 
 interface SidebarProps {
   book: BookType;
@@ -40,6 +42,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectEntityType,
   onDeleteChapters
 }) => {
+  // 自定义对话框系统
+  const { dialogConfig, closeDialog, showConfirm } = useDialog();
+
   const [isBatchMode, setIsBatchMode] = React.useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = React.useState<string[]>([]);
 
@@ -62,9 +67,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const handleBatchDelete = () => {
+  const handleBatchDelete = async () => {
     if (selectedChapterIds.length === 0) return;
-    if (window.confirm(`确定要删除选中的 ${selectedChapterIds.length} 个章节吗？`)) {
+    const confirmed = await showConfirm(`确定要删除选中的 ${selectedChapterIds.length} 个章节吗？`, '批量删除');
+    if (confirmed) {
       onDeleteChapters?.(selectedChapterIds);
       setIsBatchMode(false);
       setSelectedChapterIds([]);
@@ -237,6 +243,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           全局设置
         </button>
       </div>
+
+      {/* 全局自定义对话框 */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div>
   );
 };

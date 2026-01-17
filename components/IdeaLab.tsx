@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { IdeaProject, AppSettings, PromptTemplate, BeatsSplit, Book, Chapter, GenerationHistoryEntry, CharacterProfile } from '../types';
 import { Lightbulb, Globe, List, FileText, Plus, ArrowRight, Wand2, Loader2, BookPlus, Trash2, ChevronDown, ChevronRight, ChevronUp, Cpu, History, Clock, Link as LinkIcon, Check, Upload, Users, User, Maximize2, X, Eye, Star, ArrowUp, ArrowDown } from 'lucide-react';
 import { generateOutlineFromWorldview, generateChapterBeatsFromOutline, generateBeatsFromVolumeContent, generateVolumesFromOutline, generatePartsFromVolume, generateStorylineFromIdea, generateOutlineFromStoryline, generateStoryCoreAndSynopsis, generateDetailedWorldview, generateWorldviewWithContext, generateCharactersFromIdea, generateCompleteOutline } from '../services/geminiService';
+import { useDialog } from '../hooks/useDialog';
+import { CustomDialog } from './CustomDialog';
 
 
 interface IdeaLabProps {
@@ -33,6 +35,9 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   onSelectBook,
   onPushChapters
 }) => {
+  // 自定义对话框系统
+  const { dialogConfig, closeDialog, showConfirm, showSuccess, showError, showWarning, showInfo } = useDialog();
+
   const [activeIdeaId, setActiveIdeaId] = useState<string | null>(ideas[0]?.id || null);
   const [activeStage, setActiveStage] = useState<'spark' | 'world' | 'character' | 'plot' | 'volume' | 'beats'>('spark');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,9 +93,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
   const [expandedBeatIndices, setExpandedBeatIndices] = useState<number[]>([]);
 
-  // 细纲拆解预览弹窗状态
-  const [showBeatsPreview, setShowBeatsPreview] = useState(false);
-  const [pendingBeats, setPendingBeats] = useState<string[] | null>(null);
+  // 细纲拆解预览相关状态已删除，改为直接保存
   const [lastGenerationParams, setLastGenerationParams] = useState<any>(null);
 
   // 世界观生成内容选择器状态
@@ -1136,7 +1139,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       // 重置参考章节选择器状态，以便下次拆解时可以重新选择
       setShowRefChapterSelector(false);
 
-      alert(`成功生成 ${beats.length} 个章节细纲！`);
+      await showSuccess(`成功生成 ${beats.length} 个章节细纲！`, '生成成功');
 
     } catch (e) {
       alert((e as Error).message);
@@ -1145,89 +1148,13 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     }
   };
 
-  // 确认添加章节细纲
-  const handleConfirmBeats = () => {
-    if (!activeIdea || !pendingBeats || !lastGenerationParams) return;
-
-    const { updatedHistory, newSplit, historyEntry } = lastGenerationParams;
-    const lastChapterNum = lastGenerationParams.startChapter + pendingBeats.length - 1;
-
-    // 将新生成的章节追加到现有列表后面
-    const updatedChapterBeats = [...(activeIdea.chapterBeats || []), ...pendingBeats];
-
-    // 更新idea,追加章节细纲
-    onUpdateIdea(activeIdea.id, {
-      beatsSplitHistory: updatedHistory,
-      lastSplitChapterNum: lastChapterNum,
-      chapterBeats: updatedChapterBeats, // 追加而非替换
-      generationHistory: [historyEntry, ...(activeIdea.generationHistory || [])]
-    });
-
-    setCurrentSplit(newSplit);
-    setVolumeContent(''); // 清空输入
-    setShowSplitHistory(false);
-
-    // 重置参考章节选择器状态，以便下次拆解时可以重新选择
-    setShowRefChapterSelector(false);
-
-    // 关闭弹窗并清空待确认数据
-    setShowBeatsPreview(false);
-    setPendingBeats(null);
-    setLastGenerationParams(null);
-  };
-
-  // 重新生成章节细纲
-  const handleRegenerateBeats = async () => {
-    if (!activeIdea || !lastGenerationParams || isGenerating) return;
-
-    const {
-      contentToProcess,
-      splitChapterCount,
-      startChapter,
-      modelConfig,
-      customTemplate,
-      referenceContext
-    } = lastGenerationParams;
-
-    setIsGenerating(true);
-    try {
-      const beats = await generateBeatsFromVolumeContent(
-        { ...modelConfig, modelName: stageModels.beats },
-        {
-          volumeContent: contentToProcess,
-          chapterCount: splitChapterCount,
-          startChapter: startChapter,
-          spark: activeIdea.spark,
-          core: activeIdea.storyCore,
-          synopsis: activeIdea.storySynopsis,
-          worldview: activeIdea.worldview,
-          characters: activeIdea.characters,
-          referenceContext: referenceContext
-        },
-        customTemplate
-      );
-
-      // 更新待确认的章节
-      setPendingBeats(beats);
-
-      // 更新生成参数中的beats数量(可能会变化)
-      setLastGenerationParams({
-        ...lastGenerationParams,
-        newSplit: {
-          ...lastGenerationParams.newSplit,
-          beats
-        }
-      });
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  // handleConfirmBeats 和 handleRegenerateBeats 已随预览弹窗一同删除，现在直接保存结果
 
 
-  const handleDeleteSplit = (splitId: string) => {
-    if (!activeIdea || !window.confirm('确定要删除这条拆分记录吗？')) return;
+  const handleDeleteSplit = async (splitId: string) => {
+    if (!activeIdea) return;
+    const confirmed = await showConfirm('确定要删除这条拆分记录吗？', '删除确认');
+    if (!confirmed) return;
 
     const updatedHistory = activeIdea.beatsSplitHistory?.filter(s => s.id !== splitId) || [];
 
@@ -1250,11 +1177,12 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
     });
   };
 
-  const handlePushBeatsToBook = () => {
+  const handlePushBeatsToBook = async () => {
     if (!activeIdea || !activeIdea.chapterBeats || activeIdea.chapterBeats.length === 0) return;
 
     if (!activeIdea.linkedBookId) {
-      if (window.confirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？')) {
+      const confirmed = await showConfirm('当前灵感尚未关联作品。是否立即创建一个新作品并推送到其中？', '创建作品');
+      if (confirmed) {
         onConvertToBook(activeIdea);
       }
       return;
@@ -1278,9 +1206,10 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
       };
     });
 
-    if (window.confirm(`即将推送 ${newChapters.length} 个章节到关联作品。确定吗？`)) {
+    const confirmed = await showConfirm(`即将推送 ${newChapters.length} 个章节到关联作品。确定吗？`, '推送确认');
+    if (confirmed) {
       onPushChapters(activeIdea.linkedBookId, newChapters);
-      alert("章节已成功推送到作品目录！");
+      await showSuccess("章节已成功推送到作品目录！", '推送成功');
     }
   };
 
@@ -1506,7 +1435,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
               placeholder="未命名灵感"
             />
             <div className="flex items-center gap-2">
-              {activeIdea.linkedBookId ? (
+              {activeIdea.linkedBookId && books?.find(b => b.id === activeIdea.linkedBookId) ? (
                 <button
                   onClick={() => onSelectBook?.(activeIdea.linkedBookId!)}
                   className="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
@@ -2991,8 +2920,9 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                               共 <span className="text-indigo-400 font-bold">{activeIdea.chapterBeats.length}</span> 个章节
                             </div>
                             <button
-                              onClick={() => {
-                                if (window.confirm('确定要清空所有章节细纲吗？')) {
+                              onClick={async () => {
+                                const confirmed = await showConfirm('确定要清空所有章节细纲吗？', '清空确认');
+                                if (confirmed) {
                                   onUpdateIdea(activeIdea.id, { chapterBeats: [] });
                                 }
                               }}
@@ -3035,157 +2965,7 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
                   </div>
                 </div>
 
-                {/* 细纲拆解预览弹窗 */}
-                {showBeatsPreview && pendingBeats && (
-                  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-8">
-                    <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-6xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                      {/* 标题栏 */}
-                      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 z-10">
-                        <div>
-                          <h3 className="text-xl font-bold text-white">细纲拆解预览</h3>
-                          <p className="text-sm text-gray-500 mt-1">
-                            共生成 {pendingBeats.length} 个章节 · 起始章节号: {lastGenerationParams?.startChapter || 1}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setShowBeatsPreview(false);
-                            setPendingBeats(null);
-                            setLastGenerationParams(null);
-                          }}
-                          className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* 章节列表 */}
-                      <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-gray-950/50">
-                        {pendingBeats.map((beat, idx) => {
-                          const isExpanded = expandedChapterIndices.includes(idx);
-                          return (
-                            <div key={idx} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors">
-                              {/* 章节标题栏 */}
-                              <div
-                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50 transition-colors"
-                                onClick={() => toggleChapterExpand(idx)}
-                              >
-                                <div className="flex items-center flex-1 min-w-0">
-                                  <span className="w-8 h-8 bg-indigo-600/20 text-indigo-400 rounded-lg flex items-center justify-center font-bold text-xs mr-3 shrink-0">
-                                    {(lastGenerationParams?.startChapter || 1) + idx}
-                                  </span>
-                                  <span className="text-lg font-bold text-gray-200 truncate">
-                                    {beat.chapterTitle}
-                                  </span>
-                                </div>
-                                <div className="text-gray-500 ml-4">
-                                  {isExpanded ? (
-                                    <ChevronUp className="w-5 h-5" />
-                                  ) : (
-                                    <ChevronDown className="w-5 h-5" />
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* 章节详细内容 - 折叠/展开 */}
-                              {isExpanded && (
-                                <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                      <label className="text-xs font-bold text-gray-600 uppercase">剧情梗概</label>
-                                      <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-xl p-3 text-sm text-gray-400 min-h-[96px]">
-                                        {beat.summary}
-                                      </div>
-                                    </div>
-                                    <div className="space-y-4">
-                                      <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-600 uppercase">核心冲突</label>
-                                        <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400">
-                                          {beat.conflict}
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-600 uppercase">出场角色</label>
-                                        <div className="w-full bg-gray-950/50 border border-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400">
-                                          {beat.keyCharacters.join(', ')}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* 场景细化 */}
-                                  {beat.scenes && beat.scenes.length > 0 && (
-                                    <div className="mt-6 border-t border-gray-800 pt-4">
-                                      <div className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center">
-                                        <List className="w-3 h-3 mr-1.5" />
-                                        场景细化
-                                        <span className="ml-2 text-[10px] lowercase font-normal opacity-50 italic">
-                                          ({beat.scenes.length} 个场景)
-                                        </span>
-                                      </div>
-                                      <div className="space-y-3">
-                                        {beat.scenes.map((scene, sIdx) => (
-                                          <div key={sIdx} className="bg-gray-950/30 border border-gray-800/30 rounded-lg p-3">
-                                            <div className="flex items-center justify-between mb-2">
-                                              <span className="text-xs font-bold text-indigo-400">
-                                                场景 {sIdx + 1}: {scene.sceneTitle}
-                                              </span>
-                                              <span className="text-xs text-gray-600">{scene.wordCount}</span>
-                                            </div>
-                                            <p className="text-xs text-gray-500 leading-relaxed">{scene.detail}</p>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* 底部操作栏 */}
-                      <div className="p-6 border-t border-gray-800 bg-gray-900 flex justify-between items-center">
-                        <button
-                          onClick={handleRegenerateBeats}
-                          disabled={isGenerating}
-                          className="px-6 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center"
-                        >
-                          {isGenerating ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              重新生成中...
-                            </>
-                          ) : (
-                            <>
-                              <Wand2 className="w-4 h-4 mr-2" />
-                              重新生成
-                            </>
-                          )}
-                        </button>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              setShowBeatsPreview(false);
-                              setPendingBeats(null);
-                              setLastGenerationParams(null);
-                            }}
-                            className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg font-medium transition-colors"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={handleConfirmBeats}
-                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
-                          >
-                            确认添加
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* 已删除旧版预览弹窗，细纲生成后直接进入编辑区 */}
               </div>
             )}
           </div>
@@ -3292,6 +3072,9 @@ export const IdeaLab: React.FC<IdeaLabProps> = ({
           </div>
         )
       }
+
+      {/* 全局自定义对话框 */}
+      <CustomDialog config={dialogConfig} onClose={closeDialog} />
     </div >
   );
 };
