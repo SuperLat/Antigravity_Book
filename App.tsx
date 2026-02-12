@@ -366,7 +366,7 @@ const App: React.FC = () => {
       storyBackground: '',
       worldview: '',
       outline: '',
-      chapterBeats: [],
+      chapterBeats: '',
     };
     setIdeas(prev => [newIdea, ...prev]);
   };
@@ -469,15 +469,27 @@ const App: React.FC = () => {
     }
 
     // 6. Characters (Character Profiles)
-    if (idea.characters && idea.characters.length > 0) {
-      idea.characters.forEach((char, index) => {
-        newEntities.push({
-          id: Date.now() + `_char_${index}`,
-          type: EntityType.CHARACTER,
-          name: char.name,
-          description: char.description || `${char.role}`,
-          tags: ['人物', char.role],
-          content: `【姓名】：${char.name}
+    if (idea.characters) {
+      if (typeof idea.characters === 'string') {
+        if (idea.characters.trim()) {
+          newEntities.push({
+            id: Date.now() + '_char_text',
+            type: EntityType.CHARACTER,
+            name: '人物设定汇编',
+            description: '从灵感实验室导入的人物小传全文',
+            tags: ['人物', '系统导入'],
+            content: idea.characters.trim()
+          });
+        }
+      } else if (Array.isArray(idea.characters) && idea.characters.length > 0) {
+        idea.characters.forEach((char, index) => {
+          newEntities.push({
+            id: Date.now() + `_char_${index}`,
+            type: EntityType.CHARACTER,
+            name: char.name,
+            description: char.description || `${char.role}`,
+            tags: ['人物', char.role],
+            content: `【姓名】：${char.name}
 【定位】：${char.role}
 【性别】：${char.gender || '未知'}
 【年龄】：${char.age || '未知'}
@@ -485,8 +497,9 @@ const App: React.FC = () => {
 【性格特征】：${char.personality || '暂无'}
 【外貌描写】：${char.appearance || '暂无'}
 【背景故事】：${char.background || '暂无'}`
+          });
         });
-      });
+      }
     }
 
     const newBook: Book = {
@@ -497,10 +510,10 @@ const App: React.FC = () => {
       status: 'serializing',
       cover: 'from-yellow-600 to-orange-600',
       entities: newEntities,
-      chapters: idea.chapterBeats && idea.chapterBeats.length > 0
-        ? idea.chapterBeats.map((beat, idx) => {
+      chapters: idea.chapterBeats && typeof idea.chapterBeats === 'string' && idea.chapterBeats.trim().length > 0
+        ? idea.chapterBeats.split('\n\n').filter(b => b.trim().length > 0).map((beat, idx) => {
           // 从字符串中提取标题（第一行）
-          const lines = beat.split('\n');
+          const lines = beat.trim().split('\n');
           const title = lines[0] || `第${idx + 1}章`;
 
           return {
@@ -1049,6 +1062,9 @@ const App: React.FC = () => {
             handleUpdateChapterContent(newContent);
           }}
         />
+
+        {/* 全局自定义对话框 */}
+        <CustomDialog config={dialogConfig} onClose={closeDialog} />
       </div>
     );
   }
@@ -1136,6 +1152,12 @@ const App: React.FC = () => {
             onConvertToBook={handleConvertIdeaToBook}
             onSelectBook={handleSelectBook}
             onPushChapters={handlePushChaptersToBook}
+            onUpdatePrompt={(id, updates) => {
+              const prompt = prompts.find(p => p.id === id);
+              if (prompt) {
+                handleUpdatePrompt({ ...prompt, ...updates });
+              }
+            }}
           />
         )}
         {dashboardTab === 'prompt_manager' && (

@@ -60,7 +60,7 @@ export interface BeatsSplit {
   volumeContent: string; // 卷内容
   chapterCount: number; // 拆分章数
   startChapter: number; // 起始章节号
-  beats: string[]; // 拆分结果 - 简化为字符串数组
+  beats: string; // 拆分结果 - 更改为纯文本字符串
   createdAt: number;
 }
 
@@ -112,10 +112,10 @@ export interface IdeaProject {
   storyBackground?: string; // 新增：背景
   storyline?: string; // 新增：故事线
   worldview: string; // Keep for compatibility, or repurpose
-  characters?: CharacterProfile[]; // 新增：角色人物小传
+  characters?: CharacterProfile[] | string; // 角色人物小传（支持数组模式和文本模式）
   outline: string;
   volumes?: Volume[];
-  chapterBeats?: string[]; // 章节细纲 - 简化为字符串数组
+  chapterBeats?: string; // 章节细纲 - 更改为纯文本字符串
   beatsSplitHistory?: BeatsSplit[];
   lastSplitChapterNum?: number;
   linkedBookId?: string; // ID of the actual book project this idea is linked to

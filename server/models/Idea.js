@@ -20,7 +20,7 @@ const BeatsSplitSchema = new mongoose.Schema({
     volumeContent: { type: String, required: true },
     chapterCount: { type: Number, required: true },
     startChapter: { type: Number, required: true },
-    beats: [String], // 简化为字符串数组
+    beats: { type: String }, // 更改为纯文本字符串
     createdAt: { type: Number, required: true }
 });
 
@@ -57,10 +57,10 @@ const IdeaSchema = new mongoose.Schema({
     storyBackground: { type: String }, // Added
     storyline: { type: String, default: '' }, // Added
     worldview: { type: String, default: '' },
-    characters: [CharacterProfileSchema], // Added
+    characters: { type: mongoose.Schema.Types.Mixed }, // 支持对象数组或纯文本字符串
     outline: { type: String, default: '' },
     volumes: [VolumeSchema], // Added
-    chapterBeats: [String], // 简化为字符串数组
+    chapterBeats: { type: String }, // 更改为纯文本字符串
     beatsSplitHistory: [BeatsSplitSchema], // Added
     lastSplitChapterNum: { type: Number, default: 0 }, // Added
     linkedBookId: { type: String }, // Added

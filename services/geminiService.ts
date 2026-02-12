@@ -95,8 +95,14 @@ const truncateText = (text: string | undefined, maxLength: number, fieldName?: s
  * @param maxPerCharacter 每个角色的最大字符数
  * @returns 优化后的角色文本
  */
-const optimizeCharacters = (characters: CharacterProfile[] | undefined, maxPerCharacter: number = 200): string => {
-  if (!characters || characters.length === 0) return "暂无具体角色设定";
+const optimizeCharacters = (characters: CharacterProfile[] | string | undefined, maxPerCharacter: number = 200): string => {
+  if (!characters) return "暂无具体角色设定";
+
+  if (typeof characters === 'string') {
+    return characters.trim() || "暂无具体角色设定";
+  }
+
+  if (characters.length === 0) return "暂无具体角色设定";
 
   return characters.map(c => {
     const personality = c.personality?.slice(0, 50) || '未设定';
@@ -618,7 +624,7 @@ ${userPrompt}
   console.log(finalPrompt);
   console.log("%c-----------------------", "color: #6366f1;");
 
-  const systemInstruction = "请根据提供的结构化上下文（设定集、参考章节、前情提要等），严格执行用户的提示词指令。保持文风一致，所有输出默认使用中文。";
+  const systemInstruction = "";
 
   try {
     // Route to different providers
@@ -887,29 +893,15 @@ export const generateWorldviewFromIdea = async (
   ideaContent: string,
   customTemplate?: string
 ): Promise<string> => {
-  let finalPrompt = '';
-
-  if (customTemplate) {
-    finalPrompt = customTemplate
-      .replace(/{{input}}/g, ideaContent)
-      .replace(/{{spark}}/g, ideaContent);
-  } else {
-    finalPrompt = `
-      核心梗/脑洞：【${ideaContent}】
-      
-      请基于上述核心梗，设计一个精炼的世界观草案。
-      
-      要求包含以下内容（请保持简明扼要）：
-      1. 力量体系名称及等级划分。
-      2. 社会结构与核心阶层矛盾。
-      3. 核心能源或驱动力是什么。
-      4. 独特的地理环境或城市风貌。
-      
-      请使用结构清晰的 Markdown 格式输出。
-    `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建世界观生成提示词');
   }
 
-  const systemInstruction = "你是一个想象力丰富的世界架构师。请根据用户的灵感碎片构建逻辑自洽且精炼的小说世界观。";
+  const finalPrompt = customTemplate
+    .replace(/{{input}}/g, ideaContent)
+    .replace(/{{spark}}/g, ideaContent);
+
+  const systemInstruction = "";
 
   try {
     if (modelConfig.provider === 'gemini') {
@@ -947,25 +939,14 @@ export const generateDetailedWorldview = async (
 ): Promise<string> => {
   const lengthLabel = context.storyLength === 'short' ? '短篇故事' : '长篇小说';
 
-  const prompt = customTemplate
-    ? customTemplate.replace('{{storyLength}}', lengthLabel)
-    : `
-      基于以下故事信息，设计一个精炼且逻辑自洽的世界观背景。
-      
-      【故事篇幅】：${lengthLabel}
-      【故事内核】：${context.core || '未设定'}
-      【故事概要】：${context.synopsis || '未设定'}
-      【初步设定】：类型：${context.genre || '未指定'}，基础背景：${context.background || '未指定'}
-      
-      要求包含以下内容（请保持简明扼要，避免冗长）：
-      1. 世界背景：简述故事发生的空间设定。
-      2. 力量/技术体系：概括核心逻辑（如修仙等级、科技水平、魔法法则等）。
-      3. 核心冲突源：点出导致故事发生的深层诱因。
-      
-      请使用结构清晰的 Markdown 格式输出，重点在于核心设定的构建，非核心细节可适当留白。
-    `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建世界观生成提示词');
+  }
 
-  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请为小说构建逻辑自洽且精炼的世界观。";
+  const prompt = customTemplate
+    .replace('{{storyLength}}', lengthLabel);
+
+  const systemInstruction = "";
 
   try {
     if (modelConfig.provider === 'gemini') {
@@ -1007,7 +988,7 @@ export const generateWorldviewWithContext = async (
   console.log(prompt);
   console.log("%c-----------------------", "color: #eab308;");
 
-  const systemInstruction = "你是一个想象力丰富且逻辑严密的世界架构师。请基于用户提供的素材，构建逻辑自洽且精炼的世界观。务必充分利用提供的所有信息。";
+  const systemInstruction = "";
 
   try {
     if (modelConfig.provider === 'gemini') {
@@ -1038,32 +1019,16 @@ export const generateOutlineFromWorldview = async (
   spark: string,
   customTemplate?: string
 ): Promise<string> => {
-  let finalPrompt = '';
-
-  if (customTemplate) {
-    finalPrompt = customTemplate
-      .replace(/{{worldview}}/g, worldview || "（暂无详细设定，请根据核心梗自由发挥）")
-      .replace(/{{spark}}/g, spark)
-      .replace(/{{input}}/g, spark);
-  } else {
-    // 动态构建 Prompt，如果 worldview 为空则不强调它
-    const worldviewSection = worldview ? `【世界观设定】：${worldview}` : '';
-
-    finalPrompt = `
-      【核心梗】：${spark}
-      ${worldviewSection}
-
-      请基于以上信息，设计一个标准的三幕式小说大纲。
-      要求：
-      1. 主角背景设定（底层贫民/意外卷入者等）。
-      2. 每一幕（第一卷、第二卷、第三卷）的核心冲突和高潮点。
-      3. 结局的初步构想。
-      
-      请用 Markdown 格式输出。
-    `;
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建大纲生成提示词');
   }
 
-  const systemInstruction = "你是一个擅长构建剧情结构的小说主编。请设计情节紧凑、冲突激烈的大纲。";
+  const finalPrompt = customTemplate
+    .replace(/{{worldview}}/g, worldview || "（暂无详细设定）")
+    .replace(/{{spark}}/g, spark)
+    .replace(/{{input}}/g, spark);
+
+  const systemInstruction = "";
 
   // --- 调试：输出最终的 Prompt ---
   console.log("%c[Outline Generation Prompt]", "color: #a855f7; font-weight: bold;");
@@ -1100,35 +1065,21 @@ export const generateChapterBeatsFromOutline = async (
   modelConfig: ModelConfig,
   outline: string,
   customTemplate?: string
-): Promise<string[]> => {
-  let promptContent = '';
-
-  if (customTemplate) {
-    promptContent = customTemplate
-      .replace(/{{outline}}/g, outline)
-      .replace(/{{input}}/g, outline);
-  } else {
-    promptContent = `
-      【小说大纲】：${outline}
-
-      请基于大纲的第一部分（第一卷），拆分为 5-8 个具体的章节细纲。
-    `;
+): Promise<string> => {
+  if (!customTemplate) {
+    throw new Error('请先在「指令工程」中选择或创建细纲拆解提示词');
   }
 
-  const finalPrompt = `
-    ${promptContent}
-    
-    --- 输出规范 ---
-    请严格返回 JSON 对象数组格式，不要包含任何 markdown 代码块标记。
-    请确保每个章节对象的具体字段和内容结构严格遵循你上方接收到的指令要求。
-  `;
+  const finalPrompt = customTemplate
+    .replace(/{{outline}}/g, outline)
+    .replace(/{{input}}/g, outline);
 
   // --- 调试：输出最终的 Prompt ---
   console.log("%c[Chapter Beats From Outline Prompt]", "color: #6366f1; font-weight: bold;");
   console.log(finalPrompt);
   console.log("%c-----------------------", "color: #6366f1;");
 
-  const systemInstruction = "你是一个精通网文节奏的策划。请将大纲拆解为具象化的章节细纲。仅返回纯 JSON 数据。请确保每一章的内容都是独特的，不要重复相同的大纲。";
+  const systemInstruction = "";
 
   try {
     let text = '';
@@ -1138,16 +1089,15 @@ export const generateChapterBeatsFromOutline = async (
       if (!geminiClient) throw new Error("API Key missing.");
 
       const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-        model: modelConfig.modelName || 'gemini-2.5-flash',
+        model: modelConfig.modelName || 'gemini-2.0-flash',
         contents: finalPrompt,
         config: {
           systemInstruction,
           temperature: 0.6,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json"
+          maxOutputTokens: 8192
         }
       }));
-      text = response.text || "[]";
+      text = response.text || "";
     } else {
       const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
       const result = await callOpenAICompatible(
@@ -1158,27 +1108,10 @@ export const generateChapterBeatsFromOutline = async (
       text = result;
     }
 
-    // Clean up potential markdown code blocks
-    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-
-    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-      jsonStr = arrayMatch[0];
-    }
-
-    try {
-      const result = JSON.parse(jsonStr) as string[];
-      if (!Array.isArray(result) || !result.every(item => typeof item === 'string')) {
-        throw new Error('返回的数据不是字符串数组');
-      }
-      return result;
-    } catch (e) {
-      console.error("JSON Parse Error. Raw:", text);
-      throw new Error("AI 返回数据无法解析，请重试。");
-    }
+    return text.trim();
   } catch (error) {
-    console.error("JSON Parse Error or AI Error", error);
-    throw new Error("生成细纲失败或格式解析错误。");
+    console.error("AI Error", error);
+    throw new Error("生成细纲失败。");
   }
 };
 
@@ -1194,14 +1127,14 @@ export const generateBeatsFromVolumeContent = async (
     synopsis?: string;
     worldview?: string;
     characters?: CharacterProfile[];
-    referenceContext?: string; // New: Context from reference chapters
+    referenceContext?: string;
     genre?: string;
     background?: string;
     storyLength?: string;
     outline?: string;
   },
   customTemplate?: string
-): Promise<string[]> => {
+): Promise<string> => {
   let promptContent = '';
 
   const { volumeContent, chapterCount, startChapter, referenceContext } = context;
@@ -1227,6 +1160,9 @@ ${optimizedCharacters}
 ${context.outline ? `--- 全书大纲参考 ---\n${truncateText(context.outline, FIELD_LENGTH_LIMITS.outline, '全书大纲')}\n` : ''}
 
 ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceContext}` : ''}
+
+--- 待拆解的剧情/章节内容 ---
+${volumeContent}
   `.trim();
 
   if (!customTemplate) {
@@ -1241,28 +1177,14 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
     .replace(/{{startChapter}}/g, String(startChapter))
     .replace(/{{reference}}/g, referenceContext || '');
 
-  const finalPrompt = `
-    ${promptContent}
-    
-    --- 输出规范 ---
-    1. 必须且仅返回一个符合 JSON 数组格式的字符串数组：["内容1", "内容2", ...]。
-    2. 数组中应包含 ${chapterCount} 个元素，每个元素对应一个章节。
-    3. 严禁包含任何 Markdown 格式标记（如 \`\`\`json）。
-    4. 请严格遵循上方提供的提示词指令中所要求的章节内容结构和写作风格。
-    5. **重点：请在章节内的标题、章节梗概、核心冲突等不同板块之间使用换行符（\\n）进行分隔，确保输出的内容易于阅读且美观。**
-  `;
+  const finalPrompt = promptContent;
 
   // --- 调试：输出最终的 Prompt ---
   console.log("%c[Beats From Volume Prompt]", "color: #ec4899; font-weight: bold;");
   console.log(finalPrompt);
   console.log("%c-----------------------", "color: #ec4899;");
 
-  const systemInstruction = `你是一个深耕网文创作的 AI 助手。你极其擅长逻辑推演和细节丰满。
-你的守则：
-1. 逻辑重于一切：必须严格基于用户提供的【故事内核】、【世界观】和【角色小传】进行细化，绝对不允许背离设定。
-2. 风格匹配：保持与参考内容的语境一致。
-3. 严格遵循输出数量要求：用户要求 ${chapterCount} 章，就必须生成 ${chapterCount} 章。
-4. 仅输出纯 JSON 数据，禁止任何废话。`;
+  const systemInstruction = "";
 
   try {
     let text = '';
@@ -1272,16 +1194,15 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
       if (!geminiClient) throw new Error("API Key missing.");
 
       const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-        model: modelConfig.modelName || 'gemini-2.5-flash',
+        model: modelConfig.modelName || 'gemini-2.0-flash',
         contents: finalPrompt,
         config: {
           systemInstruction,
-          temperature: 0.7, // Slightly higher temp for creative splitting
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json"
+          temperature: 0.7,
+          maxOutputTokens: 8192
         }
       }));
-      text = response.text || "[]";
+      text = response.text || "";
     } else {
       const configWithHighTokens = { ...modelConfig, maxTokens: Math.max(modelConfig.maxTokens || 4096, 8192) };
       const result = await callOpenAICompatible(
@@ -1292,53 +1213,10 @@ ${referenceContext ? `--- 前文剧情参考/承接上下文 ---\n${referenceCon
       text = result;
     }
 
-    // Clean up potential markdown code blocks
-    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-
-    // Attempt to extract JSON array
-    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-      jsonStr = arrayMatch[0];
-    }
-
-    try {
-      const result = JSON.parse(jsonStr) as string[];
-      // 验证结果是字符串数组
-      if (!Array.isArray(result) || !result.every(item => typeof item === 'string')) {
-        throw new Error('返回的数据不是字符串数组');
-      }
-      return result;
-    } catch (parseError) {
-      console.warn("Initial JSON parse failed, attempting recovery...");
-
-      // 尝试简单的恢复：查找最后一个完整的引号并截断
-      let currentStr = jsonStr;
-      let attempts = 0;
-      const MAX_ATTEMPTS = 20;
-
-      while (currentStr.lastIndexOf('"') !== -1 && attempts < MAX_ATTEMPTS) {
-        attempts++;
-        const lastQuoteIdx = currentStr.lastIndexOf('"');
-        currentStr = currentStr.substring(0, lastQuoteIdx + 1);
-        const attemptStr = currentStr + ']';
-
-        try {
-          const recoveredData = JSON.parse(attemptStr) as string[];
-          if (Array.isArray(recoveredData) && recoveredData.every(item => typeof item === 'string')) {
-            console.log(`JSON recovery successful after ${attempts} attempts. Items recovered:`, recoveredData.length);
-            return recoveredData;
-          }
-        } catch (e) {
-          currentStr = currentStr.substring(0, currentStr.length - 1);
-        }
-      }
-
-      console.error("JSON Parse Error. Raw Text:", text);
-      throw new Error(`AI 返回格式错误，无法解析细纲数据。`);
-    }
+    return text.trim();
   } catch (error) {
-    console.error("JSON Parse Error or AI Error", error);
-    throw new Error("生成细纲失败或格式解析错误。");
+    console.error("AI Error", error);
+    throw new Error("生成细纲失败。");
   }
 };
 
@@ -1351,94 +1229,41 @@ export const generateCharactersFromIdea = async (
     supporting: number;
   },
   customTemplate?: string
-): Promise<Omit<CharacterProfile, 'id'>[]> => {
-  let promptContent = '';
-
-  const countReq = requirements
-    ? `请严格生成以下数量的角色：主角 ${requirements.protagonist} 人，反派 ${requirements.antagonist} 人，重要配角 ${requirements.supporting} 人。`
-    : "请基于以上故事设定，设计 3-5 个核心角色（包括主角和关键配角/反派）。";
-
+): Promise<string> => {
   if (!customTemplate) {
     throw new Error('请先在「指令工程」中选择或创建人物生成提示词');
   }
 
-  promptContent = customTemplate
-    .replace(/{{context}}/g, contextText)
-    .replace(/{{requirements}}/g, countReq);
-
-  const finalPrompt = `
-          ${promptContent}
-          
-          --- 输出规范 ---
-          1. 必须且仅返回一个符合 JSON 对象数组格式的数据。
-          2. 请严格遵循提示词中要求的字段名和数据结构。
-          3. 严禁包含任何 Markdown 代码块标记（如 \`\`\`json）。
-        `;
+  const finalPrompt = customTemplate.replace(/{{context}}/g, contextText);
 
   // --- 调试：输出最终的 Prompt ---
   console.log("%c[Characters Generation Prompt]", "color: #3b82f6; font-weight: bold;");
   console.log(finalPrompt);
   console.log("%c-----------------------", "color: #3b82f6;");
 
-  const systemInstruction = "你是一个擅长创造鲜活角色的人物设计师。请设计有血有肉、动机合理的角色。仅返回纯 JSON 数据。";
+  const systemInstruction = "";
 
   try {
-    let text = '';
-
     if (modelConfig.provider === 'gemini') {
       initializeGemini(modelConfig.apiKey);
       if (!geminiClient) throw new Error("API Key missing.");
 
       const response = await retryWithBackoff(() => geminiClient!.models.generateContent({
-        model: modelConfig.modelName || 'gemini-2.5-flash',
+        model: modelConfig.modelName || 'gemini-2.0-flash',
         contents: finalPrompt,
         config: {
           systemInstruction,
           temperature: 0.8,
           maxOutputTokens: 8192,
-          responseMimeType: "application/json"
         }
       }));
-      text = response.text || "[]";
+      return typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || "");
     } else {
-      const result = await callOpenAICompatible(
+      return await callOpenAICompatible(
         modelConfig,
         [{ role: 'user', content: finalPrompt }],
         systemInstruction
       );
-      text = result;
-    }
-
-    // Clean up potential markdown code blocks and whitespace
-    let jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-
-    // Ensure start from the first bracket
-    const startIdx = jsonStr.indexOf('[');
-    if (startIdx !== -1) {
-      jsonStr = jsonStr.substring(startIdx);
-    }
-
-    try {
-      return JSON.parse(jsonStr) as Omit<CharacterProfile, 'id'>[];
-    } catch (parseError) {
-      console.warn("Initial JSON parse failed, attempting recovery for truncated JSON...");
-
-      // Recovery Logic: Try to find the last closing brace '}' and close the array
-      const lastBraceIdx = jsonStr.lastIndexOf('}');
-      if (lastBraceIdx !== -1) {
-        // Take everything up to the last object end, and assume it's an array that needs closing
-        const recoveredStr = jsonStr.substring(0, lastBraceIdx + 1) + ']';
-        try {
-          const recoveredData = JSON.parse(recoveredStr) as Omit<CharacterProfile, 'id'>[];
-          console.log("JSON recovery successful. Items recovered:", recoveredData.length);
-          return recoveredData;
-        } catch (recoveryError) {
-          console.error("JSON recovery failed.");
-        }
-      }
-
-      console.error("JSON Parse Error. Raw Text:", text);
-      throw new Error(`AI 返回格式错误，无法解析角色数据。原始响应片段: ${text.slice(0, 100)}...`);
     }
   } catch (error) {
     console.error("Generate Characters Error:", error);
@@ -1462,7 +1287,7 @@ export const generateCompleteOutline = async (
   console.log(finalPrompt);
   console.log("%c-----------------------", "color: #8b5cf6;");
 
-  const systemInstruction = "你是一个擅长结构布局的小说主编。请根据现有素材，编织出主线清晰、支线丰富、逻辑严密的大纲。";
+  const systemInstruction = "";
 
   try {
     if (modelConfig.provider === 'gemini') {
